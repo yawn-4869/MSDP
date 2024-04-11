@@ -170,8 +170,8 @@ int HeartBeat::recvMsg() {
                 m_node_map[ip].last_time = msg.timestamp;
             }
 
-            DEBUGLOG("IP:PORT [%s:%d] update nodelist success, status[%d], join time: %lld, last time: %lld", 
-            m_local_addr, m_port, m_node_map[m_local_addr].is_disconnected, m_node_map[ip].join_time, m_node_map[ip].last_time);
+            DEBUGLOG("IP:PORT [%s:%d] update node [%s:%d] success, status[%d], join time: %lld, last time: %lld", 
+            m_local_addr, m_port, ip, port, m_node_map[m_local_addr].is_disconnected, m_node_map[ip].join_time, m_node_map[ip].last_time);
         }
         break;
     case HB_MSG_QUIT:
