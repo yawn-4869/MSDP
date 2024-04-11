@@ -36,15 +36,9 @@ void HeartBeat::init(HBRUNTYPE hb_type, const char* client_addr, const char* loc
 }
 
 int HeartBeat::sendMsg(HBMSGTYPE type, char* worker_ip, int next_track_number) {
-    // if(m_hb_type == HB_DISCONNECTED) {
-    //     // 断开连接, 不需要发送网络包
-    //     return HB_ERR_INVALID_PARAM;
-    // }
-    // 组包
-    // u_int pkg_len = sizeof(HBMSG) + len;
-    // HBMSG* msg = (HBMSG*)malloc(sizeof(pkg_len));
-    // msg->type = type;
-    // msg->len = pkg_len;
+    if(m_node_map[m_local_addr].is_disconnected) {
+        return -1;
+    }
     HBMSG msg;
     msg.type = type;
     msg.len = sizeof(HBMSG);
@@ -77,8 +71,8 @@ int HeartBeat::sendMsg(HBMSGTYPE type, char* worker_ip, int next_track_number) {
         return HB_ERR_SOCK_SEND;
     }
 
-    DEBUGLOG("IP:PORT [%s:%d] send HB msg to [%s:%d] success, node status: %d, alive time = %lld", 
-    m_local_addr, m_port, m_client_addr, m_port, m_node_map[m_local_addr].is_disconnected, msg.alive_time);
+    DEBUGLOG("IP:PORT [%s:%d] send HB msg to [%s:%d] success, node status: %d, alive time = %lld, current worker[%s]", 
+    m_local_addr, m_port, m_client_addr, m_port, m_node_map[m_local_addr].is_disconnected, msg.alive_time, worker_ip);
     return HB_OK;
 }
 
@@ -209,6 +203,7 @@ void HeartBeat::loopCheck() {
                         it->second.is_worker = false;
                         m_node_map[ip].is_worker = true;
                     }
+                    DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, it->second.port, ip);
                 }
             } else {
                 it->second.lost_count++;
