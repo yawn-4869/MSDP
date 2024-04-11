@@ -12,7 +12,7 @@
 	"server_count": 3,
 	"radar_count": 1,
 	"send_port_count": 4,
-	"server_address": "192.168.58.146",
+	"server_address": "192.168.58.148",
 	"worker_server_address": "192.168.58.146",
 	"recv_address": "127.0.0.1",
 	"send_address": "192.168.1.136",
