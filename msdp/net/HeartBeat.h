@@ -65,8 +65,8 @@ class HeartBeat
 {
 public:
     HeartBeat();
-    HeartBeat(HBRUNTYPE hb_type, const char* ip, u_int port);
-    void init(HBRUNTYPE hb_type, const char* ip, u_int port);
+    HeartBeat(HBRUNTYPE hb_type, const char* client_addr, const char* local_addr, u_int port);
+    void init(HBRUNTYPE hb_type, const char* client_addr, const char* local_addr, u_int port);
     ~HeartBeat();
 public:
     // 发送心跳包
@@ -111,7 +111,8 @@ private:
     }
 private:
 	HBRUNTYPE m_hb_type;	// 作为服务器/客户端
-	char m_ip[HB_IP_LEN];	// 发送地址
+	char m_local_addr[HB_IP_LEN];	// 发送地址
+    char m_client_addr[HB_IP_LEN]; // 发送地址
 	u_int m_port;			// 监听端口
     std::map<std::string, NODE> m_node_map; // 服务器节点列表
     CNetSocket* m_send_sock;
