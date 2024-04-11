@@ -1,0 +1,58 @@
+syntax = "proto3";
+option cc_generic_services = true;
+
+message RadarTrackMessage {
+  int32 id = 1;
+  int64 Address = 2;
+  int64 TrackNo = 3;
+  int32 SSR = 4;
+  string callNo = 5;
+  double fX = 6;
+  double fY = 7;
+  bool xyflg = 8;
+	double rho = 9;
+	double theta = 10;
+	bool rtflg = 11;
+	int32 Hei = 12;
+	double Lon = 13;
+	double Lat = 14;
+	double vec = 15;
+	double cource = 16;
+	double vz = 17;
+	int64 Time = 18;
+	int64 currTime = 19;
+	int32 extraCount = 20;
+	int64 afterExtraT = 21;
+}
+
+message AssTrackMessage {
+  repeated RadarTrackMessage unitTrackVec = 1;
+  double weight = 2;
+  int32 unitTrackTermCount = 3;
+}
+
+message FusionRetMessage {
+  double fX = 1;
+  double fY = 2;
+  double fHead = 3;
+  double fHei = 4;
+  double fV = 5;
+  int32 state = 6;
+  int32 SSR = 7;
+  int32 id = 8;
+  int64 Address = 9;
+  int64 currTime = 10;
+  string callNo = 11;
+}
+
+message FusionUnitMessage {
+  int64 time = 1;
+  int32 flag = 2;
+  int32 newTrackNo = 3;
+  map<int32, AssTrackMessage> assMap = 4;
+  FusionRetMessage fRet = 5;
+}
+
+message SystemTrackMessage {
+  
+}
