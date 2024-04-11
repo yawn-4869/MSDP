@@ -122,7 +122,8 @@ void Server::init() {
             // 只有工作机才能发送航迹号, 非工作机发送-1的航迹号, 作为区分
             next_track_number = m_next_track_number;
         }
-        m_hb_handler->sendMsg(send_type, (char*)m_worker_ip.c_str(), next_track_number);
+        int is_send = m_hb_handler->sendMsg(send_type, (char*)m_worker_ip.c_str(), next_track_number);
+        printf("send status: %d", is_send);
     });
     hb_send_thread->getEventLoop()->addTimerEvent(hb_send_event);
 
