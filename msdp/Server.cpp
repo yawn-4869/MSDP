@@ -43,7 +43,8 @@ Server::Server() {
     m_send_socks.push_back(fusion_unit_send_sock);
 
     // 初始化心跳包
-    m_hb_handler = new HeartBeat(HB_CONNECTED, Config::get_instance()->m_hb_group_address.c_str(), Config::get_instance()->m_hb_group_port);
+    m_hb_handler = new HeartBeat(HB_CONNECTED, Config::get_instance()->m_hb_group_address.c_str(), 
+    m_ip.c_str(), Config::get_instance()->m_hb_group_port);
 
     init();
 }
@@ -273,7 +274,7 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
                     // 将rho theta转化为fX, fY
                     ite->fX = ite->rho * sin(ite->theta * PI / 180.0);
                     ite->fY = ite->rho * cos(ite->theta * PI / 180.0);
-                    DEBUGLOG("adsb: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f\n", ite->TrackNo, ite->fX, ite->fY);
+                    APPDEBUGLOG("adsb: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f\n", ite->TrackNo, ite->fX, ite->fY);
                     m_track_list.push_back(*ite);
                     // m_tff_vec.push_back(trkRepToTrkForFusion(*ite));
                 }
