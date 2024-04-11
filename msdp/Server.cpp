@@ -43,7 +43,7 @@ Server::Server() {
     m_send_socks.push_back(fusion_unit_send_sock);
 
     // 初始化心跳包
-    m_hb_handler = new HeartBeat(HB_DISCONNECTED, Config::get_instance()->m_hb_group_address.c_str(), Config::get_instance()->m_hb_group_port);
+    m_hb_handler = new HeartBeat(HB_CONNECTED, Config::get_instance()->m_hb_group_address.c_str(), Config::get_instance()->m_hb_group_port);
 
     init();
 }
