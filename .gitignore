@@ -1,3 +1,6 @@
 .vscode
 log/*
 build/*
+conf/*
+run_self_disconnected.sh
+run_self_reconnected.sh
