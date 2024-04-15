@@ -231,7 +231,7 @@ bool CNetSocket::SendData(unsigned char *buf, int buflength)
 		// printf("send dat len = %d\n", len);
 		if (len == -1)
 		{
-			printf("send failed! errno[%d], error:%s\n", errno, strerror(errno));
+			// printf("send failed! errno[%d], error:%s\n", errno, strerror(errno));
 			return false;
 		}
 		else
