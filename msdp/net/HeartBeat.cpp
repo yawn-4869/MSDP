@@ -207,7 +207,7 @@ void HeartBeat::loopCheck() {
                 printf("a node server from ip:%s disconnected\n", it->second.ip);
             } else {
                 it->second.lost_count++;
-                printf("a node server from ip:%s timeout, count: %d\n", it->second.ip, it->second.lost_count);
+                printf("a node server from ip:%s timeout, delta_ts=%lld, count: %d\n", it->second.ip, delta_ts, it->second.lost_count);
             }
         }
     }
