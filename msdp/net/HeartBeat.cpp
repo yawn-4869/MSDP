@@ -190,12 +190,6 @@ void HeartBeat::loopCheck() {
         
         if(delta_ts > Config::get_instance()->m_hb_lost_tolerance) {
             if(it->second.lost_count >= Config::get_instance()->m_hb_lost_max_count) {
-                it->second.is_alive = false;
-                // 相关参数重置, 等待下次连接
-                it->second.join_time = 0;
-                it->second.last_time = 0;
-                it->second.lost_count = 0;
-                printf("a node server from ip:%s disconnected\n", it->second.ip);
                 if(it->second.is_worker) {
                     // 工作机掉线
                     const char* ip = getMaxAliveNode();
@@ -205,6 +199,12 @@ void HeartBeat::loopCheck() {
                     }
                     DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, it->second.port, ip);
                 }
+                it->second.is_alive = false;
+                // 相关参数重置, 等待下次连接
+                it->second.join_time = 0;
+                it->second.last_time = 0;
+                it->second.lost_count = 0;
+                printf("a node server from ip:%s disconnected\n", it->second.ip);
             } else {
                 it->second.lost_count++;
                 printf("a node server from ip:%s timeout, count: %d\n", it->second.ip, it->second.lost_count);
