@@ -88,10 +88,10 @@ public:
     int getRecvFd() {
         return m_receive_sock->GetReceiveFd();
     }
-    char* getWorkerAddr() {
+    const char* getWorkerAddr() {
         for(auto it = m_node_map.begin(); it != m_node_map.end(); it++) {
             if(it->second.is_worker) {
-                return it->second.ip;
+                return it->first.c_str();
             }
         }
         return NULL;
@@ -99,15 +99,19 @@ public:
 
 private:
     // 返回除工作机外在网时长最久的节点ip
-    char* getMaxAliveNode() {
-        NODE* target = NULL;
+    const char* getMaxAliveNode() {
+        const char* target_ip = NULL;
         for(auto it = m_node_map.begin(); it != m_node_map.end(); it++) {
-            if(it->second.is_worker || !it->second.is_alive) continue;
-            if(target == NULL || getAliveTime(target->ip) < getAliveTime(it->second.ip)) {
-                target = &it->second;
+            if(it->second.is_worker || !it->second.is_alive) {
+                continue;
+            }
+
+            if(target_ip == NULL || getAliveTime(target_ip) < getAliveTime(it->second.ip)) {
+                target_ip = it->first.c_str();
             }
         }
-        return target->ip;
+
+        return target_ip;
     }
 private:
 	HBRUNTYPE m_hb_type;	// 作为服务器/客户端

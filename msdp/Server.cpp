@@ -123,7 +123,7 @@ void Server::init() {
             next_track_number = m_next_track_number;
         }
         int is_send = m_hb_handler->sendMsg(send_type, (char*)m_worker_ip.c_str(), next_track_number);
-        printf("send status: %d\n", is_send);
+        // printf("send status: %d\n", is_send);
     });
     hb_send_thread->getEventLoop()->addTimerEvent(hb_send_event);
 
@@ -139,7 +139,7 @@ void Server::init() {
     FdEvent* hb_recv_event = new FdEvent(m_hb_handler->getRecvFd());
     hb_recv_event->listen(FdEvent::IN_EVENT, [this] () {
         int next_track_number = m_hb_handler->recvMsg();
-        char* ip = m_hb_handler->getWorkerAddr();
+        const char* ip = m_hb_handler->getWorkerAddr();
         if(ip != NULL) {
             m_worker_ip = ip;
         }
