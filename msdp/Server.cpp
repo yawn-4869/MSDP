@@ -123,7 +123,7 @@ void Server::init() {
             next_track_number = m_next_track_number;
         }
         int is_send = m_hb_handler->sendMsg(send_type, (char*)m_worker_ip.c_str(), next_track_number);
-        printf("send status: %d", is_send);
+        printf("send status: %d\n", is_send);
     });
     hb_send_thread->getEventLoop()->addTimerEvent(hb_send_event);
 
