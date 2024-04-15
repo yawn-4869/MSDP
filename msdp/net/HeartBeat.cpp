@@ -72,7 +72,7 @@ int HeartBeat::sendMsg(HBMSGTYPE type, char* worker_ip, int next_track_number) {
     }
 
     DEBUGLOG("IP:PORT [%s:%d] send HB msg to [%s:%d] success, node status: %d, alive time = %lld, current worker[%s]", 
-    m_local_addr, m_port, m_client_addr, m_port, m_node_map[m_local_addr].is_disconnected, msg.alive_time, worker_ip);
+    m_local_addr, m_port, m_client_addr, m_port, m_node_map[m_local_addr].is_disconnected, msg.alive_time, msg.worker_ip);
     return HB_OK;
 }
 
@@ -197,7 +197,7 @@ void HeartBeat::loopCheck() {
                         it->second.is_worker = false;
                         m_node_map[ip].is_worker = true;
                     }
-                    DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, it->second.port, ip);
+                    DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, ip);
                 }
                 it->second.is_alive = false;
                 // 相关参数重置, 等待下次连接
