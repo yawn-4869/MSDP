@@ -197,7 +197,7 @@ void HeartBeat::loopCheck() {
                         it->second.is_worker = false;
                         m_node_map[ip].is_worker = true;
                     }
-                    DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, it->second.port, ip);
+                    printf("worker server changed, from [%s] to [%s]", it->second.ip, it->second.port, ip);
                 }
                 it->second.is_alive = false;
                 // 相关参数重置, 等待下次连接
