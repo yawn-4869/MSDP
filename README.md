@@ -1,7 +1,21 @@
 ### 环境配置说明
-本项目需要在CentOS7环境下安装cmake以及Eigen库以支持卡尔曼滤波, 
+```
+虚拟机：CentOS7
 
-需要安装protobuf以支持序列化和反序列化
+gcc: 9.3.1 
+
+cmake: 3.8.0
+
+protobuf: 3.19.4
+
+依赖库：
+
+Eigen -- 卡尔曼滤波
+
+rocket -- rpc调用
+
+tinyxml -- rocket读取配置文件需要
+```
 
 步骤如下
 
@@ -18,7 +32,7 @@ sudo yum install gcc-c++
 3. 安装cmake（需要root权限）
 ```
 解压压缩包：
-tar -zxvf cmake-3.3.2.tar.gz 
+tar -zxvf cmake-3.8.0.tar.gz 
 进入解压后的文件夹：
 cd cmake-3.3.2
 输入:

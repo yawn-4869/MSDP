@@ -13,3 +13,8 @@ void TimerEvent::resetArriveTime() {
     m_arrive_time = now + m_interval;
     // DEBUGLOG("success create timer event, will excute at [%lld]", m_arrive_time);
 }
+
+void TimerEvent::resetInterval(int interval) {
+    m_interval = interval;
+    resetArriveTime();
+}

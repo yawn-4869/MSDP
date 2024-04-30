@@ -20,6 +20,7 @@ public:
     void addEpollEvent(FdEvent* event);
     void addTimerEvent(TimerEvent::s_ptr event);
     void deleteEpollEvent(FdEvent* event);
+    void deleteTimerEvent(TimerEvent::s_ptr event);
 
 public: 
     static EventLoop* GetCurrentEventloop();
