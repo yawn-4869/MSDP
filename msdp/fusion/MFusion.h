@@ -8,6 +8,7 @@
 #include <vector>
 #include <fstream>
 #include <mutex>
+#include <math.h>
 #include "defstruct.h"
 #include "Config.h"
 #define DIS_THRESHOLD 3000  // m

@@ -140,6 +140,10 @@ void EventLoop::deleteEpollEvent(FdEvent* event) {
     }
 }
 
+void EventLoop::deleteTimerEvent(TimerEvent::s_ptr event) {
+    m_timer->deleteTimerEvent(event);
+}
+
 EventLoop* EventLoop::GetCurrentEventloop() {
     if(t_current_event_loop) {
         return t_current_event_loop;
