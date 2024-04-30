@@ -13,7 +13,6 @@ CGeograpCoordTrans::~CGeograpCoordTrans()
 {
 }
 
-// ����λ�þ�γ�ȣ� ����: loDeg ��, loMin ��, loSec ��;  γ��: laDeg ��, laMin ��, laSec��
 void CGeograpCoordTrans::InitOrg(short loDeg, short loMin, double loSec, short laDeg, short laMin, double laSec)
 {
 	m_LoDeg = loDeg;
@@ -30,7 +29,7 @@ void CGeograpCoordTrans::InitOrg(short loDeg, short loMin, double loSec, short l
 	Ec = Rj + (Rc - Rj) * (90. - m_Latitude) / 90.;
 	Ed = Ec * cos(m_RadLa);
 }
-// ����λ�þ�γ�ȣ� ����: longitude ��, ;  γ��: latiutde ��
+
 void CGeograpCoordTrans::InitOrg(double longitude, double latitude)
 {
 	m_LoDeg = short(longitude);
@@ -49,7 +48,6 @@ void CGeograpCoordTrans::InitOrg(double longitude, double latitude)
 	Ed = Ec * cos(m_RadLa);
 }
 
-// ���뾭γ��λ�ã����������InitOrg��γ�ȵľ���ͷ�λ����λ�ֱ�Ϊ�ס���
 double CGeograpCoordTrans::GetDistanceAg(short loDeg, short loMin, double loSec, short laDeg, short laMin, double laSec, double *angle)
 {
 	double tpdLog = (double)loDeg + (double)loMin / 60. + loSec / 3600.;
@@ -67,7 +65,7 @@ double CGeograpCoordTrans::GetDistanceAg(short loDeg, short loMin, double loSec,
 	if (angle != nullptr)
 	{
 		*angle = atan(fabs(dx / dy)) * D180_DIVPI; // 180. / PI;
-		// �ж�����
+
 		double dLo = tpdLog - m_Longitude;
 		double dLa = tpdLat - m_Latitude;
 
@@ -96,7 +94,7 @@ double CGeograpCoordTrans::GetDistanceAg(double longitude, double latitude, doub
 	if (angle != nullptr)
 	{
 		*angle = atan(fabs(dx / dy)) * D180_DIVPI; // 180. / PI;
-		// �ж�����
+
 		double dLo = longitude - m_Longitude;
 		double dLa = latitude - m_Latitude;
 
@@ -116,7 +114,6 @@ double CGeograpCoordTrans::GetDistanceAg(double longitude, double latitude, doub
 	return out; // unit: m;
 }
 
-// ���������InitOrg��γ�ȵ�ľ���(m)�ͷ�λ(deg)�����ض�Ӧ��γ�ȣ���λΪ����
 void CGeograpCoordTrans::GetTarLLPos(double distance, double angle, double *logitude, double *latitude)
 {
 	double dx = distance * sin(angle * PI_DIV180); // 3.14159265 / 180.);

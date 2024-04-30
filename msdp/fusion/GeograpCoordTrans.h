@@ -3,8 +3,8 @@
 #include <math.h>
 #include<iostream>
 
-static double Rc = 6378137;  // ?????
-static double Rj = 6356725;  // ????
+static double Rc = 6378137;
+static double Rj = 6356725;
 
 class CGeograpCoordTrans
 {
@@ -13,30 +13,26 @@ public:
 	~CGeograpCoordTrans();
 
 private:
-	short m_LoDeg, m_LoMin; double m_LoSec;  // longtitude ??????????
-	short m_LaDeg, m_LaMin; double m_LaSec;  // latitude ��????????
-	double m_Longitude, m_Latitude;    // longtitude ?????latitude ��?????
-	double m_RadLo, m_RadLa;          // longtitude ?????latitude ��???????
+	short m_LoDeg, m_LoMin; double m_LoSec;  
+	short m_LaDeg, m_LaMin; double m_LaSec;  
+	double m_Longitude, m_Latitude;    
+	double m_RadLo, m_RadLa;
 	double Ec;
 	double Ed;
 
 public:
-	// ????��???��??? ????: loDeg ??, loMin ??, loSec ??;  ��??: laDeg ??, laMin ??, laSec??
 	void InitOrg(short loDeg, short loMin, double loSec, short laDeg, short laMin, double laSec);
-	// ????��???��??? ????: longitude ??, ;  ��??: latiutde ??
+
 	void InitOrg(double longitude, double latitude);
 
-	//????��??��????????????InitOrg??��????????��????��?????????
 	double GetDistanceAg(short loDeg, short loMin, double loSec, short laDeg, short laMin, double laSec, double *angle);
 	double GetDistanceAg(double longitude, double latitude, double *angle);
 
-	//?????????InitOrg??��???????(m)???��(deg)??????????��?????��?????
 	void GetTarLLPos(double distance, double angle, double *logitude, double*latitude);
 
-	//
 	bool BL2XY(double lat, double lon, double &x, double &y);
 	double B2S(double B1, double B2);
-	void BL2xy84(double lon,double lat, double L0,double &px,double &py);//L0�����뾭�߾���
+	void BL2xy84(double lon,double lat, double L0,double &px,double &py);
 	void LoLaHtoDxSpaceXYZ(double L,double B,double &X,double &Y);
 	void xy2RhoTheta(double x,double y,double &rho,double &theta);
 };

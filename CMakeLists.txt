@@ -14,6 +14,21 @@ set(CMAKE_CXX_COMPILER g++)
 
 # 查找 Protobuf 库
 find_package(Protobuf REQUIRED)
+find_library(ROCKET_LIB rocket PATHS /usr/local/lib)
+find_library(TINYXML_LIB tinyxml PATHS /usr/lib)
+
+if(ROCKET_LIB)
+    message(STATUS "Found librocket: ${ROCKET_LIB}")
+else()
+    message(FATAL_ERROR "librocket not found")
+endif()
+
+if(TINYXML_LIB)
+    message(STATUS "Found libtinyxml: ${TINYXML_LIB}")
+else()
+    message(FATAL_ERROR "libtinyxml not found")
+endif()
+
 
 # 设置变量，下面的代码都可以用到
 set(MSDP_ROOT_DIR ${PROJECT_SOURCE_DIR}/msdp)
@@ -25,11 +40,16 @@ set(MSDP_PROTO_DIR ${PROJECT_SOURCE_DIR}/msdp/proto)
 # 添加生成的 .pb.h 和 .pb.cc 文件的输出目录
 set(MSDP_PROTO_OUT ${PROJECT_SOURCE_DIR}/msdp/proto_out)
 
+# 需要调用的rpc所在文件夹
+set(LIB_RPC_DIR ${PROJECT_SOURCE_DIR}/raft_server)
+set(LIB_RPC_COMM ${LIB_RPC_DIR}/comm)
+set(LIB_RPC_INTERFACE ${LIB_RPC_DIR}/interface)
+set(LIB_RPC_PB ${LIB_RPC_DIR}/pb)
+set(LIB_RPC_SERVICE ${LIB_RPC_DIR}/service)
+set(LIB_RPC_STUBS ${LIB_RPC_DIR}/stubs)
+
 # 添加 .proto 文件
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MSDP_PROTO_DIR}/fusion.proto)
-
-# 编译子文件夹的CMakeLists.txt
-# add_subdirectory(proto_pb2)
 
 # 收集所有子目录的源文件
 file(GLOB_RECURSE MSDP_SOURCES
@@ -40,13 +60,29 @@ file(GLOB_RECURSE MSDP_SOURCES
     ${MSDP_TOOLS_DIR}/*.cpp
 )
 
+file (GLOB_RECURSE LIB_RPC_SOURCES
+    ${LIB_RPC_COMM}/*.cc
+    ${LIB_RPC_INTERFACE}/*.cc
+    ${LIB_RPC_PB}/*.cc
+    ${LIB_RPC_SERVICE}/*.cc
+    ${LIB_RPC_STUBS}/*.cc
+)
+
+set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+# 生成rpc静态库
+add_library(librpc STATIC ${LIB_RPC_SOURCES})
+# 包含静态库路径
+link_directories(${PROJECT_SOURCE_DIR}/lib)
+# 链接静态库
+link_libraries(librpc)
 # 生成可执行文件
 add_executable(msdp_app ${MSDP_SOURCES} ${PROTO_SRCS} ${PROTO_HDRS})
 
 # 规定.h头文件路径
 target_include_directories(msdp_app PRIVATE ${MSDP_ROOT_DIR} ${MSDP_COMMON_DIR} 
     ${MSDP_FUSION_DIR} ${MSDP_NET_DIR} ${MSDP_TOOLS_DIR} ${MSDP_PROTO_OUT}
+    ${LIB_RPC_COMM} ${LIB_RPC_INTERFACE} ${LIB_RPC_PB} ${LIB_RPC_SERVICE} ${LIB_RPC_STUBS}
 )
 
 # 链接 Protobuf 库
-target_link_libraries(msdp_app ${PROTOBUF_LIBRARIES})
+target_link_libraries(msdp_app ${PROTOBUF_LIBRARIES} ${ROCKET_LIB} ${TINYXML_LIB} )

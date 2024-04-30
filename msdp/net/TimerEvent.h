@@ -30,6 +30,8 @@ public:
 
     void resetArriveTime();
 
+    void resetInterval(int interval);
+
 private:
     int64_t m_arrive_time; // 到期时间, ms
     int64_t m_interval; // 间隔时间, ms
