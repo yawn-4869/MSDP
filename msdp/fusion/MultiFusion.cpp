@@ -19,7 +19,7 @@ void UnikTrk::push(const TrkForFushion &trk) {
 		double py = y + vy * Config::get_instance()->m_fusion_period / 1000.0;
 		double dis = Distance(trk.x, trk.y, 0, px, py, 0);
 		if(dis > Config::get_instance()->m_stray_threshold) {
-			APPDEBUGLOG("Stray track message: in radar: %d, unitrack %lld stray, distance: %f", trk.radar_id, trk.trk_no, dis);
+			APPDEBUGLOG(" [UNITRK] Stray track message: in radar: %d, unitrack %lld stray, distance: %f", trk.radar_id, trk.trk_no, dis);
 			return;
 		}
 	}
@@ -450,7 +450,7 @@ void MultiFusion::processUnitrk() {
 			trk.is_updated = false;
 			itx++;
 			if (!Logger::GetInstance()->isLogClose()) {
-				APPDEBUGLOG("received unitrk data message: radar_id:%d, trkno: %lld", trk.radar_id, trk.trk_no);
+				APPDEBUGLOG(" [RECEIVE] received unitrk data message: radar_id:%d, trkno: %lld", trk.radar_id, trk.trk_no);
 			}
 		}	
 	}
@@ -469,7 +469,7 @@ void MultiFusion::deleteSystrk() {
 				utrk.associate_track.erase(it->first);
 			}
 			if (!Logger::GetInstance()->isLogClose()) {
-				APPINFOLOG("Systrack deleted message: delete systrack, trk_no: %d", it->first);
+				APPINFOLOG(" [SYSTRK] Systrack deleted message: delete systrack, trk_no: %d", it->first);
 			}
 			it = m_sys_trks.erase(it);
 		} else {
@@ -523,7 +523,7 @@ void MultiFusion::associate() {
 						}
 
 						if (!Logger::GetInstance()->isLogClose()) {
-							APPINFOLOG("Unitrk associate message: systrk: %d radar_id: %d trkno: %d processtime: %lld", 
+							APPINFOLOG(" [ASSOCIATE] systrk: %d radar_id: %d trkno: %d processtime: %lld", 
 										itxx->first, trk.radar_id, trk.trk_no, m_sys_time);
 						}
 					}
@@ -583,7 +583,7 @@ void MultiFusion::createSystrk() {
 						}
 
 						if (!Logger::GetInstance()->isLogClose()) {
-							APPINFOLOG("Unitrk associate message: systrk: %d radar_id: %d trkno: %d processtime: %lld", 
+							APPINFOLOG(" [ASSOCIATE] systrk: %d radar_id: %d trkno: %d processtime: %lld", 
 										itxx->first, trk.radar_id, trk.trk_no, m_sys_time);
 						}
 					}
@@ -612,7 +612,7 @@ void MultiFusion::createSystrk() {
 				m_sys_trks[new_systrk.systrk_no] = new_systrk;
 				if (!Logger::GetInstance()->isLogClose())
 				{
-					APPINFOLOG("Create system track message: create systrack, trkno: %d, associate map: %lld, %lld, %lld", 
+					APPINFOLOG(" [SYSTRK] create systrack, trkno: %d, associate map: %lld, %lld, %lld", 
 					new_systrk.systrk_no, new_systrk.associate_map[1].second, new_systrk.associate_map[2].second, new_systrk.associate_map[3].second);
 				}
 			}

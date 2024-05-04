@@ -277,7 +277,7 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
                     // 将rho theta转化为fX, fY
                     ite->fX = ite->rho * sin(ite->theta * PI / 180.0);
                     ite->fY = ite->rho * cos(ite->theta * PI / 180.0);
-                    APPDEBUGLOG("adsb: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f\n", ite->TrackNo, ite->fX, ite->fY);
+                    APPDEBUGLOG(" [RECEIVE] adsb: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f", ite->TrackNo, ite->fX, ite->fY);
                     m_track_list.push_back(*ite);
                     // m_tff_vec.push_back(trkRepToTrkForFusion(*ite));
                 }
@@ -300,13 +300,13 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
                     double detaY = rho_dhz * cos(theta_dhz * PI / 180.0);
                     ite->fX = target_dhz_x + detaX;
                     ite->fY = target_dhz_y + detaY;
-                    APPDEBUGLOG("dhz: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f", ite->TrackNo, ite->fX, ite->fY);
+                    APPDEBUGLOG(" [RECEIVE] dhz: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f", ite->TrackNo, ite->fX, ite->fY);
                     m_track_list.push_back(*ite);
                     // m_tff_vec.push_back(trkRepToTrkForFusion(*ite));
                 } else { // fhs
                     ite->id = 3; // fhs雷达
                     ite->currTime = curr_time;
-                    APPDEBUGLOG("fhs: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f", ite->TrackNo, ite->fX, ite->fY);
+                    APPDEBUGLOG(" [RECEIVE] fhs: receive and decode success, trk_no: %lld, fx: %.4f, fy: %.4f", ite->TrackNo, ite->fX, ite->fY);
                     m_track_list.push_back(*ite);
                     // m_tff_vec.push_back(trkRepToTrkForFusion(*ite));
                 }
