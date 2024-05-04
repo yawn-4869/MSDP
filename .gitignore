@@ -2,5 +2,6 @@
 log/*
 build/*
 conf/*
+lib/*
 run_self_disconnected.sh
 run_self_reconnected.sh
