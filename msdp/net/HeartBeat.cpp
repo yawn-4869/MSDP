@@ -148,11 +148,11 @@ int HeartBeat::recvMsg() {
                     // 恢复连接标志
                     m_hb_type = HB_CONNECTED;
                     m_node_map[m_local_addr].is_disconnected = false;
-                } else {
-                    // 接到自身网络包, 重置自身在网时长
-                    m_node_map[ip].join_time = msg.timestamp;
-                    m_node_map[ip].last_time = msg.timestamp;
                 }
+
+                // 重置自身在网时长
+                m_node_map[m_local_addr].join_time = getNowMs();
+                m_node_map[m_local_addr].last_time = getNowMs();
             } else {
                 // 连接状态, 更新列表结点时间戳
                 if(!m_node_map[ip].is_alive) {
