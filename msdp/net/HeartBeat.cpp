@@ -220,5 +220,5 @@ void HeartBeat::loopCheck() {
         ip = m_local_addr;
     }
     m_node_map[ip].is_worker = true;
-    DEBUGLOG("worker server changed, from [%s] to [%s]");
+    DEBUGLOG("current worker server [%s]", ip);
 }
