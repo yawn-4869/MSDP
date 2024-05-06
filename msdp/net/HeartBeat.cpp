@@ -130,20 +130,22 @@ int HeartBeat::recvMsg() {
                 break;
             }
         } else {
+            DEBUGLOG("receive hb msg from [%s], woker[%s]", ip, msg.worker_ip);
             // 接收到已有结点的网络包
             if(m_node_map[m_local_addr].is_disconnected) {
                 // 断连状态
+                m_node_map[m_local_addr].is_worker = false;
                 if(ip != m_local_addr) {
                     // 重新连接, 接收到来自其他机器的网络包
                     if(!m_node_map[msg.worker_ip].is_worker) {
                         // 更新工作机信息
                         m_node_map[msg.worker_ip].is_worker = true;
-                        m_node_map[m_local_addr].is_worker = false;
                     }
 
                     // 更新其他结点的信息
                     m_node_map[ip].join_time = msg.timestamp - msg.alive_time;
                     m_node_map[ip].last_time = msg.timestamp;
+                    m_node_map[ip].is_alive = true;
 
                     // 恢复连接标志
                     m_hb_type = HB_CONNECTED;
