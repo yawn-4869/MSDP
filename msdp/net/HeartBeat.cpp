@@ -130,29 +130,31 @@ int HeartBeat::recvMsg() {
                 break;
             }
         } else {
+            DEBUGLOG("receive hb msg from [%s], woker[%s]", ip, msg.worker_ip);
             // 接收到已有结点的网络包
             if(m_node_map[m_local_addr].is_disconnected) {
                 // 断连状态
+                m_node_map[m_local_addr].is_worker = false;
                 if(ip != m_local_addr) {
                     // 重新连接, 接收到来自其他机器的网络包
                     if(!m_node_map[msg.worker_ip].is_worker) {
                         // 更新工作机信息
                         m_node_map[msg.worker_ip].is_worker = true;
-                        m_node_map[m_local_addr].is_worker = false;
                     }
 
                     // 更新其他结点的信息
                     m_node_map[ip].join_time = msg.timestamp - msg.alive_time;
                     m_node_map[ip].last_time = msg.timestamp;
+                    m_node_map[ip].is_alive = true;
 
                     // 恢复连接标志
                     m_hb_type = HB_CONNECTED;
                     m_node_map[m_local_addr].is_disconnected = false;
-                } else {
-                    // 接到自身网络包, 重置自身在网时长
-                    m_node_map[ip].join_time = msg.timestamp;
-                    m_node_map[ip].last_time = msg.timestamp;
                 }
+
+                // 重置自身在网时长
+                m_node_map[m_local_addr].join_time = getNowMs();
+                m_node_map[m_local_addr].last_time = getNowMs();
             } else {
                 // 连接状态, 更新列表结点时间戳
                 if(!m_node_map[ip].is_alive) {
@@ -182,6 +184,7 @@ int HeartBeat::recvMsg() {
 
 void HeartBeat::loopCheck() {
     for(auto it = m_node_map.begin(); it != m_node_map.end(); it++) {
+        // 更新结点列表
         if(!it->second.is_alive) continue;
 
         int64_t ts_recv = it->second.last_time;
@@ -192,12 +195,13 @@ void HeartBeat::loopCheck() {
             if(it->second.lost_count >= Config::get_instance()->m_hb_lost_max_count) {
                 if(it->second.is_worker) {
                     // 工作机掉线
-                    const char* ip = getMaxAliveNode();
-                    if(ip != nullptr) {
-                        it->second.is_worker = false;
-                        m_node_map[ip].is_worker = true;
-                    }
-                    DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, ip);
+                    // const char* ip = getMaxAliveNode();
+                    // if(ip != nullptr) {
+                    //     it->second.is_worker = false;
+                    //     m_node_map[ip].is_worker = true;
+                    // }
+                    // DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, ip);
+                    it->second.is_worker = false;
                 }
                 it->second.is_alive = false;
                 // 相关参数重置, 等待下次连接
@@ -211,4 +215,12 @@ void HeartBeat::loopCheck() {
             }
         }
     }
+
+    // 工作机更新
+    const char* ip = getMaxAliveNode();
+    if(ip == nullptr) {
+        ip = m_local_addr;
+    }
+    m_node_map[ip].is_worker = true;
+    DEBUGLOG("current worker server [%s]", ip);
 }

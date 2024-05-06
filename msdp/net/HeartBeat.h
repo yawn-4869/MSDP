@@ -102,8 +102,12 @@ private:
     const char* getMaxAliveNode() {
         const char* target_ip = NULL;
         for(auto it = m_node_map.begin(); it != m_node_map.end(); it++) {
-            if(it->second.is_worker || !it->second.is_alive) {
+            if(!it->second.is_alive) {
                 continue;
+            }
+
+            if(it->second.is_worker) {
+                return it->first.c_str();
             }
 
             if(target_ip == NULL || getAliveTime(target_ip) < getAliveTime(it->second.ip)) {
