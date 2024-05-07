@@ -102,16 +102,24 @@ private:
     const char* getMaxAliveNode() {
         const char* target_ip = NULL;
         for(auto it = m_node_map.begin(); it != m_node_map.end(); it++) {
+            printf("[%s] [%d] [%lld] [%lld]\n", it->first.c_str(), it->second.is_alive, it->second.join_time, it->second.last_time);
+            printf("[%lld]\n", getAliveTime(it->first.c_str()));
             if(!it->second.is_alive) {
                 continue;
             }
 
-            if(it->second.is_worker) {
-                return it->first.c_str();
-            }
+            // if(it->second.is_worker) {
+            //     return it->first.c_str();
+            // }
 
-            if(target_ip == NULL || getAliveTime(target_ip) < getAliveTime(it->second.ip)) {
+            if(target_ip == NULL) {
                 target_ip = it->first.c_str();
+            } else {
+                int64_t target_alive_time = getAliveTime(target_ip);
+                int64_t new_alive_time = getAliveTime(it->first.c_str());
+                if(target_alive_time < new_alive_time) {
+                    target_ip = it->first.c_str();
+                }
             }
         }
 
