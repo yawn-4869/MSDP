@@ -15,7 +15,7 @@
 	"server_address": "192.168.58.148",
 	"worker_server_address": "192.168.58.146",
 	"recv_address": "127.0.0.1",
-	"send_address": "10.7.178.162",
+	"send_address": "192.168.1.136",
 	"fusion_unit_group_address": "239.0.0.48",
 	"hb_group_address": "239.0.0.1",
 	"receive_port_1": 10001,
