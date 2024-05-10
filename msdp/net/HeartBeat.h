@@ -97,6 +97,10 @@ public:
         return NULL;
     }
 
+    bool isDisconnected() {
+        return m_node_map[m_local_addr].is_disconnected;
+    }
+
 private:
     // 返回除工作机外在网时长最久的节点ip
     const char* getMaxAliveNode() {
