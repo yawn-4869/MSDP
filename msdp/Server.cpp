@@ -9,6 +9,7 @@ Server::Server() {
     m_ip = Config::get_instance()->m_server_address;
     m_worker_ip = Config::get_instance()->m_worker_server_address;
     m_next_track_number = -1;
+    m_last_track_number = -1;
 
     // 类初始化
     m_coord_trans.InitOrg(Config::get_instance()->m_fusion_center_lon, Config::get_instance()->m_fusion_center_lat);
@@ -17,7 +18,7 @@ Server::Server() {
     for(int i = 0; i < Config::get_instance()->m_radar_count; ++i) {
         CNetSocket* receive_sock = new CNetSocket();
         receive_sock->InitNetSocket('R', (char*)Config::get_instance()->m_recv_address.c_str(), 
-                                    Config::get_instance()->get_instance()->m_receive_ports[i]);
+                                    Config::get_instance()->m_receive_ports[i]);
         m_recv_socks.push_back(receive_sock);
     }
 
@@ -27,8 +28,19 @@ Server::Server() {
                                                 Config::get_instance()->m_fusion_unit_group_port);
     m_recv_socks.push_back(fusion_unit_receive_sock);
 
+    // 初始化离线数据接收的netsocket
+    CNetSocket* offline_recv_sock = new CNetSocket();
+    offline_recv_sock->InitNetMultiSocket('R', (char*)Config::get_instance()->m_offline_group_address.c_str(), 
+                                                Config::get_instance()->m_offline_group_port);
+    m_recv_socks.push_back(offline_recv_sock);
+
+    // 模拟数据接收的netsocket
+    CNetSocket* mock_recv_sock = new CNetSocket();
+    mock_recv_sock->InitNetSocket('R', (char*)Config::get_instance()->m_recv_address.c_str(),
+                                  Config::get_instance()->m_test_port);
+    m_recv_socks.push_back(mock_recv_sock);
     
-    // 初始化融合报文发送的netsocket
+    // 初始化发送到显示程序的netsocket
     for(int i = 0; i < Config::get_instance()->m_send_port_count; ++i) {
         CNetSocket* send_sock = new CNetSocket();
         send_sock->InitNetSocket('S', (char*)Config::get_instance()->m_send_address.c_str(), 
@@ -41,6 +53,12 @@ Server::Server() {
     fusion_unit_send_sock->InitNetMultiSocket('S', (char*)Config::get_instance()->m_fusion_unit_group_address.c_str(), 
                                             Config::get_instance()->m_fusion_unit_group_port);
     m_send_socks.push_back(fusion_unit_send_sock);
+
+    // 初始化离线数据发送的netsocket
+    CNetSocket* offline_send_sock = new CNetSocket();
+    offline_send_sock->InitNetMultiSocket('S', (char*)Config::get_instance()->m_offline_group_address.c_str(), 
+                                            Config::get_instance()->m_offline_group_port);
+    m_send_socks.push_back(offline_send_sock);
 
     // 初始化心跳包
     m_hb_handler = new HeartBeat(HB_CONNECTED, Config::get_instance()->m_hb_group_address.c_str(), 
@@ -85,8 +103,8 @@ void Server::init() {
     // eventloop及线程池初始化
     m_main_event_loop = EventLoop::GetCurrentEventloop();
     // 线程池初始化
-    // 雷达报文接收线程m_radar_count个+1个融合线程+1个心跳包发送线程+1个心跳包接收线程+1个融合单元接收线程
-    m_thread_pool = new IOThreadPool(Config::get_instance()->m_radar_count + 4);
+    // 雷达报文接收线程m_radar_count个+1个融合线程+1个心跳包发送线程+1个心跳包接收线程+1个融合单元接收线程+1个离线数据接收线程+1个模拟数据接收线程
+    m_thread_pool = new IOThreadPool(Config::get_instance()->m_radar_count + 2 + 4);
 
     for(int i = 0; i < m_recv_socks.size(); ++i) {
         IOThread* io_thread = m_thread_pool->getIOThread();
@@ -253,6 +271,8 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
     
     int rep_recv_port = Config::get_instance()->m_receive_ports[0];
     int fusion_unit_port = Config::get_instance()->m_fusion_unit_group_port;
+    int test_port = Config::get_instance()->m_test_port;
+    int offline_port = Config::get_instance()->m_offline_group_port;
     if(port == rep_recv_port) {
         // unsigned int detaT = (int)buf[len-1] * 16777216 + (int)buf[len-2] * 65536 + (int)buf[len-3] * 256 + (int)buf[len-4]; // us
         // detaT /= 1000; // 转化成毫秒
@@ -322,6 +342,51 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
         std::unique_lock<std::mutex> fusion_list_lck(m_fusion_mtx);
         m_fusion_unit_str_vec.push_back(fusion_unit_str);
         fusion_list_lck.unlock();
+    } else if (port == offline_port) {
+        if(!m_hb_handler->isDisconnected() && m_ip == m_worker_ip) {
+            // 接收其他机器的离线数据并重新进行关联
+            std::string radar_trk_str(reinterpret_cast<const char*>(buf), len);
+            RadarTrack rt = bufStringToRadarTrack(radar_trk_str);
+            std::unique_lock<std::mutex> trk_list_lck(m_list_mtx);
+            m_track_list.push_back(rt);
+            trk_list_lck.unlock();
+        }
+    } else if(port == test_port) {
+        printf("recv mock data, len : %d\n", len);
+        // if(m_hb_handler->isDisconnected()) {
+            // 模拟本机掉线时接收到新的航迹数据
+            int64_t curr_time = getNowMs();
+            RadarTrack rt;
+            rt.InitInstance();
+            // memcpy(&rt, buf, sizeof(RadarTrack));
+            rt.currTime = curr_time;
+            memcpy(&rt.id, buf, 4);
+            memcpy(&rt.Address, buf + 4, 8);
+            memcpy(&rt.TrackNo, buf + 12, 8);
+            memcpy(&rt.SSR, buf + 20, 4);
+            // memcpy(&rt.callNo, buf + 24, 8);
+            memcpy(&rt.fX, buf + 24, 8);
+            memcpy(&rt.fY, buf + 32, 8);
+            memcpy(&rt.xyflg, buf + 40, 1);
+            memcpy(&rt.rho, buf + 41, 8);
+            memcpy(&rt.theta, buf + 49, 8);
+            memcpy(&rt.rtflg, buf + 57, 1);
+            memcpy(&rt.Hei, buf + 58, 4);
+            memcpy(&rt.Lon, buf + 62, 8);
+            memcpy(&rt.Lat, buf + 70, 8);
+            memcpy(&rt.vec, buf + 78, 8);
+            memcpy(&rt.cource, buf + 86, 8);
+            memcpy(&rt.vz, buf + 94, 8);
+            memcpy(&rt.Time, buf + 102, 8);
+            memcpy(&rt.currTime, buf + 110, 8);
+            memcpy(&rt.extraCount, buf + 118, 4);
+            memcpy(&rt.afterExtraT, buf + 122, 8);
+            rt.callNo = "ABCD";
+            std::unique_lock<std::mutex> trk_list_lck(m_list_mtx);
+            m_track_list.push_back(rt);
+            trk_list_lck.unlock();
+            APPDEBUGLOG(" [RECEIVE] test data receive success, id: %d, trk_no: %lld, fx: %.4f, fy: %.4f", rt.id, rt.TrackNo, rt.fX, rt.fY);
+        // }
     }
 }
 
@@ -334,9 +399,35 @@ void Server::repProcess(int64_t fusion_time) {
     printf("next track number: %d, generated by server: %s, this server: %s\n", m_next_track_number, m_worker_ip.c_str(), m_ip.c_str());
     // 不是工作机, 不启动融合程序, 对齐系统航迹列表的trackNo, 更新融合航迹列表
     if(m_ip != m_worker_ip) {
-        // 更新下一个新建的航迹号
-        while(m_next_track_number > 0 && m_next_track_number != m_fusion.getNextTrackNum()) {
-            m_fusion.dropTrackNum();
+        // 掉线重连后同步的逻辑
+        // 如果本机之前与服务器集群网络断开, 将自己识别为工作机, 在掉线过程中, 收到了新的雷达报文并进行处理
+        // 重连后, 如何处理航迹冲突?
+        // 1. 对于掉线过程中产生的航迹 [m_last_tracknumber, current_systrk_number), 使用一个额外的容器m_offline_systrks储存
+        // 2. 将m_offline_systrks中的融合单元作为报文转发给工作机, 让工作机处理关联关系, 处理好后会一起将所有的融合单元信息在下一周期发送给所有服务器
+        // 3. 更新 [m_last_tracknumber, m_next_tracknumber)之间的数据
+        int current_systrk_number = m_fusion.getNextTrackNum();
+        if(m_last_track_number != -1 && m_last_track_number != current_systrk_number) {
+            // 掉线过程中本机新建过航迹, 将掉线新建的航迹存储并发送给工作机
+            for(int trk_no = m_last_track_number; trk_no < current_systrk_number; ++trk_no) {
+                if(m_fusion.fusionUnits.count(trk_no)) {
+                    RadarTrack rt;
+                    rt.InitInstance();
+                    rt.TrackNo = m_fusion.fusionUnits[trk_no].newTrackNo;
+                    rt.id = m_fusion.fusionUnits[trk_no].fRet.id;
+                    rt.fX = m_fusion.fusionUnits[trk_no].fRet.fX;
+                    rt.fY = m_fusion.fusionUnits[trk_no].fRet.fY;
+                    rt.Hei = m_fusion.fusionUnits[trk_no].fRet.fHei;
+                    rt.vec = m_fusion.fusionUnits[trk_no].fRet.fV;
+                    rt.cource = m_fusion.fusionUnits[trk_no].fRet.fHead;
+                    rt.SSR = m_fusion.fusionUnits[trk_no].fRet.SSR;
+                    rt.currTime = m_fusion.fusionUnits[trk_no].fRet.currTime;
+                    std::string radar_trk_str = radarTrackToBufstring(rt);
+                    m_send_socks[4]->SendData((unsigned char*)radar_trk_str.c_str(), radar_trk_str.length());
+                    m_fusion.sysTrackNoL.push_back(trk_no);
+                }
+            }
+
+            m_last_track_number = -1; // 重连后重置状态
         }
 
         // 更新融合航迹列表
@@ -346,7 +437,11 @@ void Server::repProcess(int64_t fusion_time) {
         fusion_list_lck.unlock();
         for(int i = 0; i < tmp_vec.size(); ++i) {
             FusionUnit fusion_unit = bufStringToFusionUnit(tmp_vec[i]);
-            m_fusion.updateFusionUnitVec(fusion_unit);
+            if(fusion_unit.newTrackNo < m_last_track_number || fusion_unit.newTrackNo >= m_next_track_number) {
+                continue;
+            }
+            // m_fusion.updateFusionUnitVec(fusion_unit);
+            m_fusion.updateFusionUnits(fusion_unit);
         }
         return;
     }
@@ -355,6 +450,11 @@ void Server::repProcess(int64_t fusion_time) {
         m_fusion.m_sys_time = getNowMs();
     } else {
         m_fusion.m_sys_time += Config::get_instance()->m_fusion_period;
+    }
+
+    if(m_last_track_number == -1 && m_hb_handler->isDisconnected()) {
+        // 脱离服务器集群, 记录m_next_tracknumber
+        m_last_track_number = m_next_track_number;
     }
     // 装填航迹；新建/更新单元航迹
     m_fusion.updateUnitTrack(tmp_list);
@@ -370,8 +470,13 @@ void Server::repProcess(int64_t fusion_time) {
     m_next_track_number = m_fusion.getNextTrackNum();
 
     // 融合单元发送给其他服务器
-    for(int i = 0; i < m_fusion.fusionUnitVec.size(); ++i) {
-        FusionUnit fusion_unit = m_fusion.fusionUnitVec[i];
+    // for(int i = 0; i < m_fusion.fusionUnitVec.size(); ++i) {
+    //     FusionUnit fusion_unit = m_fusion.fusionUnitVec[i];
+    //     std::string fusion_unit_str = fusionUnitToBufString(fusion_unit);
+    //     m_send_socks[4]->SendData((unsigned char*)fusion_unit_str.c_str(), fusion_unit_str.length());
+    // }
+    for(auto ite = m_fusion.fusionUnits.begin(); ite != m_fusion.fusionUnits.end(); ite++) {
+        FusionUnit fusion_unit = ite->second;
         std::string fusion_unit_str = fusionUnitToBufString(fusion_unit);
         m_send_socks[4]->SendData((unsigned char*)fusion_unit_str.c_str(), fusion_unit_str.length());
     }
@@ -607,6 +712,62 @@ FusionUnit Server::bufStringToFusionUnit(std::string fusion_unit_string) {
     fusion_unit.fRet.callNo = fusion_ret_message.callno();
 
     return fusion_unit;
+}
+
+std::string Server::radarTrackToBufstring(RadarTrack& radar_trk) {
+    RadarTrackMessage radar_trk_message;
+    radar_trk_message.set_id(radar_trk.id);
+    radar_trk_message.set_address(radar_trk.Address);
+    radar_trk_message.set_trackno(radar_trk.TrackNo);
+    radar_trk_message.set_ssr(radar_trk.SSR);
+    radar_trk_message.set_callno(radar_trk.callNo);
+    radar_trk_message.set_fx(radar_trk.fX);
+    radar_trk_message.set_fy(radar_trk.fY);
+    radar_trk_message.set_xyflg(radar_trk.xyflg);
+    radar_trk_message.set_rho(radar_trk.rho);
+    radar_trk_message.set_theta(radar_trk.theta);
+    radar_trk_message.set_rtflg(radar_trk.rtflg);
+    radar_trk_message.set_hei(radar_trk.Hei);
+    radar_trk_message.set_lon(radar_trk.Lon);
+    radar_trk_message.set_lat(radar_trk.Lat);
+    radar_trk_message.set_vec(radar_trk.vec);
+    radar_trk_message.set_cource(radar_trk.cource);
+    radar_trk_message.set_vz(radar_trk.vz);
+    radar_trk_message.set_time(radar_trk.Time);
+    radar_trk_message.set_currtime(radar_trk.currTime);
+    radar_trk_message.set_extracount(radar_trk.extraCount);
+    radar_trk_message.set_afterextrat(radar_trk.afterExtraT);
+    std::string radar_trk_str;
+    radar_trk_message.SerializeToString(&radar_trk_str);
+    return radar_trk_str;
+
+}
+RadarTrack Server::bufStringToRadarTrack(std::string& radar_trk_str) {
+    RadarTrackMessage radar_trk_message;
+    radar_trk_message.ParseFromString(radar_trk_str);
+    RadarTrack radar_trk;
+    radar_trk.id = radar_trk_message.id();
+    radar_trk.Address = radar_trk_message.address();
+    radar_trk.TrackNo = radar_trk_message.trackno();
+    radar_trk.SSR = radar_trk_message.ssr();
+    radar_trk.callNo = radar_trk_message.callno();
+    radar_trk.fX = radar_trk_message.fx();
+    radar_trk.fY = radar_trk_message.fy();
+    radar_trk.xyflg = radar_trk_message.xyflg();
+    radar_trk.rho = radar_trk_message.rho();
+    radar_trk.theta = radar_trk_message.theta();
+    radar_trk.rtflg = radar_trk_message.rtflg();
+    radar_trk.Hei = radar_trk_message.hei();
+    radar_trk.Lon = radar_trk_message.lon();
+    radar_trk.Lat = radar_trk_message.lat();
+    radar_trk.vec = radar_trk_message.vec();
+    radar_trk.cource = radar_trk_message.cource();
+    radar_trk.vz = radar_trk_message.vz();
+    radar_trk.Time = radar_trk_message.time();
+    radar_trk.currTime = radar_trk_message.currtime();
+    radar_trk.extraCount = radar_trk_message.extracount();
+    radar_trk.afterExtraT = radar_trk_message.afterextrat();
+    return radar_trk;
 }
 
 TrkForFushion Server::trkRepToTrkForFusion(RadarTrack& trk_rep) {
