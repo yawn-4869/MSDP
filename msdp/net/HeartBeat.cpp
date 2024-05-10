@@ -193,16 +193,17 @@ void HeartBeat::loopCheck() {
         
         if(delta_ts > Config::get_instance()->m_hb_lost_tolerance) {
             if(it->second.lost_count >= Config::get_instance()->m_hb_lost_max_count) {
-                if(it->second.is_worker) {
-                    // 工作机掉线
-                    // const char* ip = getMaxAliveNode();
-                    // if(ip != nullptr) {
-                    //     it->second.is_worker = false;
-                    //     m_node_map[ip].is_worker = true;
-                    // }
-                    // DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, ip);
-                    it->second.is_worker = false;
-                }
+                // if(it->second.is_worker) {
+                //     // 工作机掉线
+                //     // const char* ip = getMaxAliveNode();
+                //     // if(ip != nullptr) {
+                //     //     it->second.is_worker = false;
+                //     //     m_node_map[ip].is_worker = true;
+                //     // }
+                //     // DEBUGLOG("worker server changed, from [%s] to [%s]", it->second.ip, ip);
+                //     it->second.is_worker = false;
+                // }
+                it->second.is_worker = false;
                 it->second.is_alive = false;
                 // 相关参数重置, 等待下次连接
                 it->second.join_time = 0;
