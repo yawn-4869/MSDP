@@ -7,8 +7,7 @@
 
 MFusion::MFusion()
 {
-    for(int i = 0;i<2000;++i)
-    {
+    for(int i = 0;i<2000;++i) {
         sysTrackNoL.push_back(i+1);
     }
     init();
@@ -83,14 +82,24 @@ void MFusion::delAndExtra(int64_t fusion_time)
 // 删除（初始化）过期的融合单源航迹
 void MFusion::iniFusionUnitTrack( int id, int trackNo)
 {
-    for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
+    // for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
+    // {
+    //     if (it->assMap[id].unitTrackVec.back().TrackNo == trackNo)
+    //     {
+    //         RadarTrack rt;
+    //         rt.InitInstance();
+    //         it->assMap[id].unitTrackVec.push_back(rt);
+    //         it->assMap[id].weight = 0;
+    //     }
+    // }
+    for (auto it = fusionUnits.begin(); it != fusionUnits.end(); ++it)
     {
-        if (it->assMap[id].unitTrackVec.back().TrackNo == trackNo)
+        if (it->second.assMap[id].unitTrackVec.back().TrackNo == trackNo)
         {
             RadarTrack rt;
             rt.InitInstance();
-            it->assMap[id].unitTrackVec.push_back(rt);
-            it->assMap[id].weight = 0;
+            it->second.assMap[id].unitTrackVec.push_back(rt);
+            it->second.assMap[id].weight = 0;
         }
     }
     // 不能直接删除，还需要根据权重慢慢降下来
@@ -110,23 +119,30 @@ void MFusion::saveUnitTrack()
 // 关联+融合
 void MFusion::associaFusion()
 {
+    // 3路雷达报告
     for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo) {
         for (auto it = unitTrack[radarNo].begin(); it != unitTrack[radarNo].end(); ++it) {
             // 查找系统航迹中是否已经有这个 trackNo
             bool related = false;
-            for (auto ite = fusionUnitVec.begin(); ite != fusionUnitVec.end(); ++ite) {
+            // for (auto ite = fusionUnitVec.begin(); ite != fusionUnitVec.end(); ++ite) {
+            for (auto ite = fusionUnits.begin(); ite != fusionUnits.end(); ++ite) {
                 // 系统航迹中有雷达 i 的  ite->arrRT[i].TrackNo 号航迹，直接更新此航迹
-                if (it->first == ite->assMap[radarNo].unitTrackVec.back().TrackNo) {
-                    associaTrack(*ite, it->second, radarNo, 1);
+                // if (it->first == ite->assMap[radarNo].unitTrackVec.back().TrackNo) {
+                if (it->first == ite->second.assMap[radarNo].unitTrackVec.back().TrackNo) {
+                    // associaTrack(*ite, it->second, radarNo, 1);
+                    associaTrack(ite->second, it->second, radarNo, 1);
                     related = true;
                     break;
-                } else if (ite->assMap[radarNo].unitTrackVec.back().TrackNo == -1) {
+                // } else if (ite->assMap[radarNo].unitTrackVec.back().TrackNo == -1) {
+                } else if (ite->second.assMap[radarNo].unitTrackVec.back().TrackNo == -1) {
                     // 系统航迹中有雷达 i 为空的航迹，可能需要关联
-                    double dis = getDis(it->second, ite->fRet);
+                    // double dis = getDis(it->second, ite->fRet);
+                    double dis = getDis(it->second, ite->second.fRet);
                     if (dis < DIS_THRESHOLD)
                     {
                         // 需要关联
-                        associaTrack(*ite, it->second, radarNo, 0);
+                        // associaTrack(*ite, it->second, radarNo, 0);
+                        associaTrack(ite->second, it->second, radarNo, 1);
                         related = true;
                         break;
                     }
@@ -142,6 +158,33 @@ void MFusion::associaFusion()
             }
         }
     }
+
+    // 其他服务器的离线报告
+    for (auto it = unitTrack[RADAR_NO+1].begin(); it != unitTrack[RADAR_NO+1].end(); ++it) {
+        bool related = false;
+        for (auto ite = fusionUnits.begin(); ite != fusionUnits.end(); ++ite) {
+            // 根据距离计算是否关联
+            double dis = getDis(it->second, ite->second.fRet);
+            if (dis < DIS_THRESHOLD)
+            {
+                // 需要关联
+                // associaTrack(*ite, it->second, radarNo, 0);
+                // associaTrack(ite->second, it->second, RADAR_NO+1, 1);
+                related = true;
+                break;
+            }
+        }
+        if (!related) {
+            // 如果附近有 SSR 相同的航迹，则不要新建系统航迹
+            // if (SSREixt(fusionUnitVec, it->second))
+            if (SSREixt( it->second)) {
+                continue;
+            } else {
+                // 关联失败, 为新的航迹, 建航
+                newSysTrack(it->second,  1);
+            }
+        }
+    }
 }
 
 void MFusion::newSysTrack(RadarTrack rt, int radarNo)
@@ -150,7 +193,6 @@ void MFusion::newSysTrack(RadarTrack rt, int radarNo)
     FusionUnit fusUnit;
     fusUnit.initInstance();
     fusUnit.time=rt.currTime;
-
     fusUnit.newTrackNo = sysTrackNoL.front();
     sysTrackNoL.pop_front();
     ++fusUnit.assMap[radarNo].unitTrackTermCount;
@@ -166,7 +208,8 @@ void MFusion::newSysTrack(RadarTrack rt, int radarNo)
     fusUnit.fRet.SSR = rt.SSR;
     fusUnit.fRet.currTime = rt.currTime;
 
-    fusionUnitVec.push_back(fusUnit);
+    // fusionUnitVec.push_back(fusUnit);
+    fusionUnits[fusUnit.newTrackNo] = fusUnit;
 }
 // newRT 加入到 fu
 void MFusion::associaTrack(FusionUnit &fu, RadarTrack newRt, int radarNo, int flag)
@@ -273,12 +316,13 @@ void MFusion::associaTrack(FusionUnit &fu, RadarTrack newRt, int radarNo, int fl
 bool MFusion::SSREixt( RadarTrack rt)
 {
     double detaX = 0, detaY = 0, detaH = 0, dis = 0;
-    for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
+    // for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
+    for (auto it = fusionUnits.begin(); it != fusionUnits.end(); ++it)
     {
-        if (rt.SSR == it->fRet.SSR)
+        if (rt.SSR == it->second.fRet.SSR)
         {
-            detaX = rt.fX - it->fRet.fX;
-            detaY = rt.fY - it->fRet.fY;
+            detaX = rt.fX - it->second.fRet.fX;
+            detaY = rt.fY - it->second.fRet.fY;
             dis = sqrt(detaX * detaX + detaY * detaY);
             if (dis < NEAR_TRACK_THRESHOLD)
             {
@@ -290,43 +334,57 @@ bool MFusion::SSREixt( RadarTrack rt)
 }
 void MFusion::getFusionRet()
 {
-    for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end();)
+    // for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end();)
+    for (auto it = fusionUnits.begin(); it != fusionUnits.end();)
     {
         bool valid = false;
         for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo) {
-            if (it->assMap[radarNo].unitTrackVec.back().TrackNo != -1) {
+            // if (it->assMap[radarNo].unitTrackVec.back().TrackNo != -1) {
+            if (it->second.assMap[radarNo].unitTrackVec.back().TrackNo != -1) {
                 valid = true;
                 break;
             }
         }
         
         if(!valid) {
-            it = fusionUnitVec.erase(it);
+            // it = fusionUnitVec.erase(it);
+            it = fusionUnits.erase(it);
             continue;
         }
 
         RadarTrack rt;
         rt.InitInstance();
-        rt.TrackNo = it->newTrackNo;
-        rt.id = it->fRet.id;
-        rt.fX = it->fRet.fX;
-        rt.fY = it->fRet.fY;
-        rt.Hei = it->fRet.fHei;
-        rt.vec = it->fRet.fV;
-        rt.cource = it->fRet.fHead;
-        rt.SSR = it->fRet.SSR;
-        rt.currTime = it->fRet.currTime;
+        // rt.TrackNo = it->newTrackNo;
+        // rt.id = it->fRet.id;
+        // rt.fX = it->fRet.fX;
+        // rt.fY = it->fRet.fY;
+        // rt.Hei = it->fRet.fHei;
+        // rt.vec = it->fRet.fV;
+        // rt.cource = it->fRet.fHead;
+        // rt.SSR = it->fRet.SSR;
+        // rt.currTime = it->fRet.currTime;
+        rt.TrackNo = it->second.newTrackNo;
+        rt.id = it->second.fRet.id;
+        rt.fX = it->second.fRet.fX;
+        rt.fY = it->second.fRet.fY;
+        rt.Hei = it->second.fRet.fHei;
+        rt.vec = it->second.fRet.fV;
+        rt.cource = it->second.fRet.fHead;
+        rt.SSR = it->second.fRet.SSR;
+        rt.currTime = it->second.fRet.currTime;
         fusionRetList.push_back(rt);
         ++it;
     }
     // 打印日志
-    for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
+    // for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
+    for (auto it = fusionUnits.begin(); it != fusionUnits.end(); ++it)
     {
         for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo)
         // for (int radarNo = 1; radarNo <=  it->assMap.size(); ++radarNo)
         {
             std::stringstream ss;
-            for (auto ite = it->assMap[radarNo].unitTrackVec.begin(); ite != it->assMap[radarNo].unitTrackVec.end(); ++ite)
+            // for (auto ite = it->assMap[radarNo].unitTrackVec.begin(); ite != it->assMap[radarNo].unitTrackVec.end(); ++ite)
+            for (auto ite = it->second.assMap[radarNo].unitTrackVec.begin(); ite != it->second.assMap[radarNo].unitTrackVec.end(); ++ite)
             {
                 ss << ite->TrackNo << " (" << ite->fX << "," << ite->fY << ")";
                 if (ite->extraCount > 0)
@@ -334,8 +392,11 @@ void MFusion::getFusionRet()
                 else
                     ss << "   ";
             }
+            // APPINFOLOG("[Fusion] SystemTrack: systrk_no[%d] (%f, %f) assMap[%d] unitTrackTermCount: %d weight: %f unitrackVec: %s", 
+            // it->newTrackNo, it->fRet.fX, it->fRet.fY, radarNo, it->assMap[radarNo].unitTrackTermCount, it->assMap[radarNo].weight, ss.str().c_str());
             APPINFOLOG("[Fusion] SystemTrack: systrk_no[%d] (%f, %f) assMap[%d] unitTrackTermCount: %d weight: %f unitrackVec: %s", 
-            it->newTrackNo, it->fRet.fX, it->fRet.fY, radarNo, it->assMap[radarNo].unitTrackTermCount, it->assMap[radarNo].weight, ss.str().c_str());
+            it->second.newTrackNo, it->second.fRet.fX, it->second.fRet.fY, radarNo, it->second.assMap[radarNo].unitTrackTermCount, 
+            it->second.assMap[radarNo].weight, ss.str().c_str());
         }
     }
 }
@@ -372,22 +433,26 @@ void MFusion::prtRTvec(std::vector<RadarTrack> unitTrackVec)
     std::cout << std::endl;
 }
 
-void MFusion::updateFusionUnitVec(FusionUnit& fusion_unit) {
-    if(fusionUnitVec.empty()) {
-        fusionUnitVec.push_back(fusion_unit);
-        return;
-    }
+// void MFusion::updateFusionUnitVec(FusionUnit& fusion_unit) {
+//     if(fusionUnitVec.empty()) {
+//         fusionUnitVec.push_back(fusion_unit);
+//         return;
+//     }
 
-    int i = 0;
-    while(i < fusionUnitVec.size()) {
-        if(fusionUnitVec[i].newTrackNo == fusion_unit.newTrackNo) {
-            break;
-        }
-        i++;
-    }
-    if(i == fusionUnitVec.size()) {
-        fusionUnitVec.push_back(fusion_unit);
-    } else {
-        fusionUnitVec[i] = fusion_unit;
-    }
+//     int i = 0;
+//     while(i < fusionUnitVec.size()) {
+//         if(fusionUnitVec[i].newTrackNo == fusion_unit.newTrackNo) {
+//             break;
+//         }
+//         i++;
+//     }
+//     if(i == fusionUnitVec.size()) {
+//         fusionUnitVec.push_back(fusion_unit);
+//     } else {
+//         fusionUnitVec[i] = fusion_unit;
+//     }
+// }
+
+void MFusion::updateFusionUnits(FusionUnit& fusion_unit) {
+    fusionUnits[fusion_unit.newTrackNo] = fusion_unit;
 }

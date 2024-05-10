@@ -84,6 +84,7 @@ bool Config::init(const char* jsonfile)
 	m_send_address = cJSON_GetObjectItem(m_json_data, "send_address")->valuestring;
 	m_fusion_unit_group_address = cJSON_GetObjectItem(m_json_data, "fusion_unit_group_address")->valuestring;
 	m_hb_group_address = cJSON_GetObjectItem(m_json_data, "hb_group_address")->valuestring;
+	m_offline_group_address = cJSON_GetObjectItem(m_json_data, "offline_group_address")->valuestring;
 	m_receive_ports.resize(m_radar_count);
 	for(int i = 0; i < m_radar_count; ++i) {
 		std::string port_name = "receive_port_" + std::to_string(i+1);
@@ -94,8 +95,10 @@ bool Config::init(const char* jsonfile)
 		std::string port_name = "send_port_" + std::to_string(i+1);
 		m_send_ports[i] = cJSON_GetObjectItem(m_json_data, port_name.c_str())->valueint;
 	}
+	m_test_port = cJSON_GetObjectItem(m_json_data, "test_port")->valueint;
 	m_fusion_unit_group_port = cJSON_GetObjectItem(m_json_data, "fusion_unit_group_port")->valueint;
 	m_hb_group_port = cJSON_GetObjectItem(m_json_data, "hb_group_port")->valueint;
+	m_offline_group_port = cJSON_GetObjectItem(m_json_data, "offline_group_port")->valueint;
 	m_hb_send_interval = cJSON_GetObjectItem(m_json_data, "hb_send_interval")->valueint;
 	m_loop_check_interval = cJSON_GetObjectItem(m_json_data, "loop_check_interval")->valueint;
 	m_hb_lost_tolerance = cJSON_GetObjectItem(m_json_data, "hb_lost_tolerance")->valueint;

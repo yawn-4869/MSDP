@@ -107,21 +107,20 @@ public:
     double detaDis(RadarTrack lastRT, RadarTrack RT);
     RadarTrack getPredRT(RadarTrack lastRT, long detaTime);
     void prtRTvec(std::vector<RadarTrack> unitTrackVec);
-    void updateFusionUnitVec(FusionUnit& fusion_unit);
+    // void updateFusionUnitVec(FusionUnit& fusion_unit);
+    void updateFusionUnits(FusionUnit& fusion_unit);
     int getNextTrackNum() {
         return sysTrackNoL.front();
     }
-    void dropTrackNum() {
-        sysTrackNoL.pop_front();
-    }
 
 public:
-    std::list<int>sysTrackNoL;
+    std::list<int> sysTrackNoL;
     std::ofstream ofs_fusionRet;
 
 	std::map<int, std::map<int, RadarTrack>> unitTrack; // 单元航迹 第一个int存储雷达雷达编号,第2个map的int存储trackNo
 	std::list<RadarTrack> unitTrack_data;
-	std::vector<FusionUnit> fusionUnitVec;
+	// std::vector<FusionUnit> fusionUnitVec;
+    std::map<int, FusionUnit> fusionUnits;
 	std::list<RadarTrack> fusionRetList; // 存储系统航迹(融合航迹)
     int64_t m_sys_time{ 0 };
     

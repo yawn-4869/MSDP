@@ -38,10 +38,13 @@ public:
 	std::string m_send_address; // 发送地址
 	std::string m_fusion_unit_group_address; // 融合单元组播地址
 	std::string m_hb_group_address; // 心跳包组播地址
+	std::string m_offline_group_address; // 离线数据组播地址
 	std::vector<int> m_receive_ports; // 雷达报文接收端口组
 	std::vector<int> m_send_ports; // 融合报文发送端口组
+	int m_test_port; // 模拟数据端口
 	int m_fusion_unit_group_port; // 融合单元组播端口
 	int m_hb_group_port; // 心跳包组播端口
+	int m_offline_group_port; // 离线数据组播端口
 	int m_hb_send_interval; // 心跳包发送间隔
 	int m_loop_check_interval; // 节点循环检查间隔
 	int m_hb_lost_tolerance; // 未接收到心跳包最大忍耐时间
