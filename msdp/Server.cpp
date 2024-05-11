@@ -413,7 +413,7 @@ void Server::repProcess(int64_t fusion_time) {
                     RadarTrack rt;
                     rt.InitInstance();
                     rt.TrackNo = m_fusion.fusionUnits[trk_no].newTrackNo;
-                    rt.id = m_fusion.fusionUnits[trk_no].fRet.id;
+                    rt.id = 4;
                     rt.fX = m_fusion.fusionUnits[trk_no].fRet.fX;
                     rt.fY = m_fusion.fusionUnits[trk_no].fRet.fY;
                     rt.Hei = m_fusion.fusionUnits[trk_no].fRet.fHei;
