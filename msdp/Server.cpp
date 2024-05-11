@@ -112,10 +112,12 @@ void Server::init() {
         int port = m_recv_socks[i]->GetPort();
         FdEvent *event = new FdEvent(listenfd);
         event->listen(FdEvent::IN_EVENT, [this, port, i](){
+            std::unique_lock<std::mutex> buf_lck(m_buf_mtx);
             memset(data_buf, 0, 1024);
             int len = m_recv_socks[i]->ReceiveData(data_buf);
             // this->repRecv(data_buf, port, len);
             this->repRecvSingle(data_buf, len, port);
+            buf_lck.unlock();
         });
         io_thread->getEventLoop()->addEpollEvent(event);
     }
@@ -353,6 +355,9 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
         }
     } else if(port == test_port) {
         printf("recv mock data, len : %d\n", len);
+        unsigned char rep_buf[200];
+        memset(rep_buf, 0, 200);
+        memcpy(rep_buf, buf, len);
         // if(m_hb_handler->isDisconnected()) {
             // 模拟本机掉线时接收到新的航迹数据
             int64_t curr_time = getNowMs();
@@ -360,27 +365,28 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
             rt.InitInstance();
             // memcpy(&rt, buf, sizeof(RadarTrack));
             rt.currTime = curr_time;
-            memcpy(&rt.id, buf, 4);
-            memcpy(&rt.Address, buf + 4, 8);
-            memcpy(&rt.TrackNo, buf + 12, 8);
-            memcpy(&rt.SSR, buf + 20, 4);
+            rt.id = 1;
+            // memcpy(&rt.id, buf, 4);
+            memcpy(&rt.Address, rep_buf + 4, 8);
+            memcpy(&rt.TrackNo, rep_buf + 12, 8);
+            memcpy(&rt.SSR, rep_buf + 20, 4);
             // memcpy(&rt.callNo, buf + 24, 8);
-            memcpy(&rt.fX, buf + 24, 8);
-            memcpy(&rt.fY, buf + 32, 8);
-            memcpy(&rt.xyflg, buf + 40, 1);
-            memcpy(&rt.rho, buf + 41, 8);
-            memcpy(&rt.theta, buf + 49, 8);
-            memcpy(&rt.rtflg, buf + 57, 1);
-            memcpy(&rt.Hei, buf + 58, 4);
-            memcpy(&rt.Lon, buf + 62, 8);
-            memcpy(&rt.Lat, buf + 70, 8);
-            memcpy(&rt.vec, buf + 78, 8);
-            memcpy(&rt.cource, buf + 86, 8);
-            memcpy(&rt.vz, buf + 94, 8);
-            memcpy(&rt.Time, buf + 102, 8);
-            memcpy(&rt.currTime, buf + 110, 8);
-            memcpy(&rt.extraCount, buf + 118, 4);
-            memcpy(&rt.afterExtraT, buf + 122, 8);
+            memcpy(&rt.fX, rep_buf + 24, 8);
+            memcpy(&rt.fY, rep_buf + 32, 8);
+            memcpy(&rt.xyflg, rep_buf + 40, 1);
+            memcpy(&rt.rho, rep_buf + 41, 8);
+            memcpy(&rt.theta, rep_buf + 49, 8);
+            memcpy(&rt.rtflg, rep_buf + 57, 1);
+            memcpy(&rt.Hei, rep_buf + 58, 4);
+            memcpy(&rt.Lon, rep_buf + 62, 8);
+            memcpy(&rt.Lat, rep_buf + 70, 8);
+            memcpy(&rt.vec, rep_buf + 78, 8);
+            memcpy(&rt.cource, rep_buf + 86, 8);
+            memcpy(&rt.vz, rep_buf + 94, 8);
+            memcpy(&rt.Time, rep_buf + 102, 8);
+            memcpy(&rt.currTime, rep_buf + 110, 8);
+            memcpy(&rt.extraCount, rep_buf + 118, 4);
+            memcpy(&rt.afterExtraT, rep_buf + 122, 8);
             rt.callNo = "ABCD";
             std::unique_lock<std::mutex> trk_list_lck(m_list_mtx);
             m_track_list.push_back(rt);
@@ -422,12 +428,16 @@ void Server::repProcess(int64_t fusion_time) {
                     rt.SSR = m_fusion.fusionUnits[trk_no].fRet.SSR;
                     rt.currTime = m_fusion.fusionUnits[trk_no].fRet.currTime;
                     std::string radar_trk_str = radarTrackToBufstring(rt);
-                    m_send_socks[4]->SendData((unsigned char*)radar_trk_str.c_str(), radar_trk_str.length());
+                    m_send_socks[5]->SendData((unsigned char*)radar_trk_str.c_str(), radar_trk_str.length());
                     m_fusion.sysTrackNoL.push_back(trk_no);
                 }
             }
 
             m_last_track_number = -1; // 重连后重置状态
+        }
+
+        while(m_next_track_number != -1 && m_fusion.getNextTrackNum() < m_next_track_number) {
+            m_fusion.sysTrackNoL.pop_front();
         }
 
         // 更新融合航迹列表
