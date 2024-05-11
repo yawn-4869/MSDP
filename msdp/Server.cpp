@@ -413,7 +413,7 @@ void Server::repProcess(int64_t fusion_time) {
                     RadarTrack rt;
                     rt.InitInstance();
                     rt.TrackNo = m_fusion.fusionUnits[trk_no].newTrackNo;
-                    rt.id = m_fusion.fusionUnits[trk_no].fRet.id;
+                    rt.id = 4;
                     rt.fX = m_fusion.fusionUnits[trk_no].fRet.fX;
                     rt.fY = m_fusion.fusionUnits[trk_no].fRet.fY;
                     rt.Hei = m_fusion.fusionUnits[trk_no].fRet.fHei;
@@ -499,7 +499,9 @@ void Server::repProcess(int64_t fusion_time) {
         
         APPINFOLOG("[Send] RepUnitrack Info: trkno[%d] (%f, %f)", rtData.TrackNo, rtData.fX, rtData.fY);
 
-        m_send_socks[rtData.id - 1]->SendData(sdBuf, 2000);
+        if(rtData.id < 4) {
+            m_send_socks[rtData.id - 1]->SendData(sdBuf, 2000);
+        }
     }
 
     // 融合结果发送到显示程序
