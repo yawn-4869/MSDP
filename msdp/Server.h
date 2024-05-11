@@ -57,6 +57,7 @@ private:
     MFusion m_fusion;
     MultiFusion m_multi_fusion;
     // 锁
+    std::mutex m_buf_mtx;
     std::mutex m_list_mtx;
     std::mutex m_fusion_mtx;
     std::mutex m_fusion_lsit_mtx;
