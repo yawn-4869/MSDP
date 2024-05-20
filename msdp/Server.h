@@ -70,6 +70,7 @@ private:
     // 数据缓冲区
     unsigned char data_buf[1024];
     unsigned char sdBuf[2000];
+    // unsigned char sdBuf[64];
     unsigned char fusion_unit_send_buffer[1024];
 
 };
