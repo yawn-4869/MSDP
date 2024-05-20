@@ -65,7 +65,7 @@ public:
         newTrackNo = 0;
         RadarTrack rt;
         rt.InitInstance();
-        for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo)
+        for (int radarNo = 1; radarNo <= RADAR_NO + 1; ++radarNo)
         {
             assMap[radarNo].unitTrackVec.push_back(rt);
             assMap[radarNo].weight = 0;
