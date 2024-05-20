@@ -4,6 +4,7 @@
 #include "MFusion.h"
 #include "Logger.h"
 #include "utils.h"
+#include "AlgorithmTool.h"
 
 MFusion::MFusion()
 {
@@ -47,19 +48,58 @@ void MFusion::delAndExtra(int64_t fusion_time)
     {
         for (auto ite = it->second.begin(); ite != it->second.end();)
         {
-            int64_t curr_time = ite->second.currTime;
-            int64_t detaT = m_sys_time - curr_time;
+            // int64_t curr_time = ite->second.currTime;
+            // int64_t detaT = m_sys_time - curr_time;
+            // if (PREMIT_EXTRA_COUNT <= ite->second.extraCount) // 删除过期的点
+            // {
+            //     // 先把融合列表里面对应的 it->first 和 ite->second.trackNo 初始化
+            //     iniFusionUnitTrack(it->first, ite->second.TrackNo);
+            //     ite = it->second.erase(ite);
+            // }else if (detaT >= Config::get_instance()->m_fusion_period) {
+            //     // 本周期没有数据更新，需要进行外推
+            //     // 外推后的坐标
+            //     detaT = Config::get_instance()->m_fusion_period;
+            //     ite->second.extraCount++;
+            //     ite->second.currTime = curr_time + detaT;
+            //     double vx = ite->second.vec * sin(ite->second.cource * PI / 180);
+            //     double vy = ite->second.vec * cos(ite->second.cource * PI / 180);
+            //     double detaX = detaT / 1000 * vx;
+            //     double detaY = detaT / 1000 * vy;
+            //     double detaZ = detaT / 1000 * ite->second.vz / 60;
+            //     ite->second.fX += detaX;
+            //     ite->second.fY += detaY;
+            //     ite->second.Hei += detaZ;
+            //     ite++;
+            // } else {
+            //     // 本周期正常更新
+            //     // 清空之前的extra
+            //     ite->second.extraCount = 0;
+            //     ite->second.afterExtraT = 0;
+            //     ite++;
+            // }
             if (PREMIT_EXTRA_COUNT <= ite->second.extraCount) // 删除过期的点
             {
                 // 先把融合列表里面对应的 it->first 和 ite->second.trackNo 初始化
                 iniFusionUnitTrack(it->first, ite->second.TrackNo);
                 ite = it->second.erase(ite);
-            }else if (detaT >= Config::get_instance()->m_fusion_period) {
-                // 本周期没有数据更新，需要进行外推
+            } else {
                 // 外推后的坐标
-                detaT = Config::get_instance()->m_fusion_period;
-                ite->second.extraCount++;
-                ite->second.currTime = curr_time + detaT;
+                int64_t curr_time = ite->second.currTime;
+                int64_t detaT = m_sys_time - curr_time;
+                if(detaT >= Config::get_instance()->m_fusion_period) {
+                    // 本周期没有数据更新，需要进行外推
+                    ite->second.extraCount++;
+                    ite->second.afterExtraT = m_sys_time;
+                } else {
+                    // 本周期正常更新
+                    // 清空之前的extra
+                    ite->second.extraCount = 0;
+                    ite->second.afterExtraT = 0;
+                }
+
+                // 时间戳与系统时间对齐
+                // detaT = Config::get_instance()->m_fusion_period;
+                ite->second.currTime = m_sys_time;
                 double vx = ite->second.vec * sin(ite->second.cource * PI / 180);
                 double vy = ite->second.vec * cos(ite->second.cource * PI / 180);
                 double detaX = detaT / 1000 * vx;
@@ -69,13 +109,14 @@ void MFusion::delAndExtra(int64_t fusion_time)
                 ite->second.fY += detaY;
                 ite->second.Hei += detaZ;
                 ite++;
-            } else {
-                // 本周期正常更新
-                // 清空之前的extra
-                ite->second.extraCount = 0;
-                ite->second.afterExtraT = 0;
-                ite++;
             }
+            // } else {
+            //     // 本周期正常更新
+            //     // 清空之前的extra
+            //     ite->second.extraCount = 0;
+            //     ite->second.afterExtraT = 0;
+            //     ite++;
+            // }
         }
     }
 }
@@ -136,8 +177,8 @@ void MFusion::associaFusion()
                 // } else if (ite->assMap[radarNo].unitTrackVec.back().TrackNo == -1) {
                 } else if (ite->second.assMap[radarNo].unitTrackVec.back().TrackNo == -1) {
                     // 系统航迹中有雷达 i 为空的航迹，可能需要关联
-                    // double dis = getDis(it->second, ite->fRet);
                     double dis = getDis(it->second, ite->second.fRet);
+                    // double dis = Distance(it->second.fX, it->second.fY, ite->second.fRet.fX, it->second.fY);
                     if (dis < DIS_THRESHOLD)
                     {
                         // 需要关联
@@ -165,6 +206,15 @@ void MFusion::associaFusion()
         for (auto ite = fusionUnits.begin(); ite != fusionUnits.end(); ++ite) {
             // 根据距离计算是否关联
             double dis = getDis(it->second, ite->second.fRet);
+            // int64_t detaT = m_sys_time - ite->second.fRet.currTime;
+            // double vx = ite->second.fRet.fV * sin(ite->second.fRet.fHead * PI / 180);
+            // double vy = ite->second.fRet.fV * cos(ite->second.fRet.fHead * PI / 180);
+            // // double detaX = detaT / 1000 * vx;
+            // // double detaY = detaT / 1000 * vy;
+            // // double detaZ = detaT / 1000 * ite->second.vz / 60;
+            // double newX = ite->second.fRet.fX + detaT / 1000 * vx;
+            // double newY = ite->second.fRet.fY + detaT / 1000 * vy;
+            // double dis = Distance(it->second.fX, it->second.fY, ite->second.fRet.fX, ite->second.fRet.fY);
             if (dis < DIS_THRESHOLD)
             {
                 // 需要关联
@@ -210,6 +260,7 @@ void MFusion::newSysTrack(RadarTrack rt, int radarNo)
 
     // fusionUnitVec.push_back(fusUnit);
     fusionUnits[fusUnit.newTrackNo] = fusUnit;
+    APPDEBUGLOG(" [Fusion] new systrk create, systrk_no[%lld] id[%d] unitrk_no[%lld] (%.4f, %.4f)", fusUnit.newTrackNo, fusUnit.fRet.id, rt.TrackNo, fusUnit.fRet.fX, fusUnit.fRet.fX);
 }
 // newRT 加入到 fu
 void MFusion::associaTrack(FusionUnit &fu, RadarTrack newRt, int radarNo, int flag)
