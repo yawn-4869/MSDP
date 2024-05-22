@@ -10,6 +10,7 @@ Server::Server() {
     m_worker_ip = Config::get_instance()->m_worker_server_address;
     m_next_track_number = -1;
     m_last_track_number = -1;
+    m_id = Config::get_instance()->m_radar_count + Config::get_instance()->m_server_id;
 
     // 类初始化
     m_coord_trans.InitOrg(Config::get_instance()->m_fusion_center_lon, Config::get_instance()->m_fusion_center_lat);
@@ -360,39 +361,39 @@ void Server::repRecvSingle(unsigned char* buf, int len, int port) {
         memset(rep_buf, 0, 200);
         memcpy(rep_buf, buf, len);
         // if(m_hb_handler->isDisconnected()) {
-            // 模拟本机掉线时接收到新的航迹数据
-            int64_t curr_time = getNowMs();
-            RadarTrack rt;
-            rt.InitInstance();
-            // memcpy(&rt, buf, sizeof(RadarTrack));
-            rt.currTime = curr_time;
-            rt.id = 1;
-            // memcpy(&rt.id, buf, 4);
-            memcpy(&rt.Address, rep_buf + 4, 8);
-            memcpy(&rt.TrackNo, rep_buf + 12, 8);
-            memcpy(&rt.SSR, rep_buf + 20, 4);
-            // memcpy(&rt.callNo, buf + 24, 8);
-            memcpy(&rt.fX, rep_buf + 24, 8);
-            memcpy(&rt.fY, rep_buf + 32, 8);
-            memcpy(&rt.xyflg, rep_buf + 40, 1);
-            memcpy(&rt.rho, rep_buf + 41, 8);
-            memcpy(&rt.theta, rep_buf + 49, 8);
-            memcpy(&rt.rtflg, rep_buf + 57, 1);
-            memcpy(&rt.Hei, rep_buf + 58, 4);
-            memcpy(&rt.Lon, rep_buf + 62, 8);
-            memcpy(&rt.Lat, rep_buf + 70, 8);
-            memcpy(&rt.vec, rep_buf + 78, 8);
-            memcpy(&rt.cource, rep_buf + 86, 8);
-            memcpy(&rt.vz, rep_buf + 94, 8);
-            memcpy(&rt.Time, rep_buf + 102, 8);
-            // memcpy(&rt.currTime, rep_buf + 110, 8);
-            memcpy(&rt.extraCount, rep_buf + 118, 4);
-            memcpy(&rt.afterExtraT, rep_buf + 122, 8);
-            rt.callNo = "ABCD";
-            std::unique_lock<std::mutex> trk_list_lck(m_list_mtx);
-            m_track_list.push_back(rt);
-            trk_list_lck.unlock();
-            APPDEBUGLOG(" [RECEIVE] test data receive success, id: %d, trk_no: %lld, fx: %.4f, fy: %.4f", rt.id, rt.TrackNo, rt.fX, rt.fY);
+        // 模拟本机掉线时接收到新的航迹数据
+        int64_t curr_time = getNowMs();
+        RadarTrack rt;
+        rt.InitInstance();
+        // memcpy(&rt, buf, sizeof(RadarTrack));
+        rt.currTime = curr_time;
+        rt.id = 1;
+        // memcpy(&rt.id, buf, 4);
+        memcpy(&rt.Address, rep_buf + 4, 8);
+        memcpy(&rt.TrackNo, rep_buf + 12, 8);
+        memcpy(&rt.SSR, rep_buf + 20, 4);
+        // memcpy(&rt.callNo, buf + 24, 8);
+        memcpy(&rt.fX, rep_buf + 24, 8);
+        memcpy(&rt.fY, rep_buf + 32, 8);
+        memcpy(&rt.xyflg, rep_buf + 40, 1);
+        memcpy(&rt.rho, rep_buf + 41, 8);
+        memcpy(&rt.theta, rep_buf + 49, 8);
+        memcpy(&rt.rtflg, rep_buf + 57, 1);
+        memcpy(&rt.Hei, rep_buf + 58, 4);
+        memcpy(&rt.Lon, rep_buf + 62, 8);
+        memcpy(&rt.Lat, rep_buf + 70, 8);
+        memcpy(&rt.vec, rep_buf + 78, 8);
+        memcpy(&rt.cource, rep_buf + 86, 8);
+        memcpy(&rt.vz, rep_buf + 94, 8);
+        memcpy(&rt.Time, rep_buf + 102, 8);
+        // memcpy(&rt.currTime, rep_buf + 110, 8);
+        memcpy(&rt.extraCount, rep_buf + 118, 4);
+        memcpy(&rt.afterExtraT, rep_buf + 122, 8);
+        rt.callNo = "ABCD";
+        std::unique_lock<std::mutex> trk_list_lck(m_list_mtx);
+        m_track_list.push_back(rt);
+        trk_list_lck.unlock();
+        APPDEBUGLOG(" [RECEIVE] test data receive success, id: %d, trk_no: %lld, fx: %.4f, fy: %.4f", rt.id, rt.TrackNo, rt.fX, rt.fY);
         // }
     }
 }
@@ -445,6 +446,15 @@ void Server::repProcess(int64_t fusion_time) {
 
         while(m_next_track_number != -1 && m_fusion.getNextTrackNum() < m_next_track_number) {
             m_fusion.sysTrackNoL.pop_front();
+        }
+
+        // 转发接收到的数据
+        for(auto ite = tmp_list.begin(); ite != tmp_list.end(); ite++) {
+            if(m_fusion.m_associate_map[m_id].count(ite->TrackNo)) {
+                ite->TrackNo = m_fusion.m_associate_map[m_id][ite->TrackNo];
+                std::string radar_trk_str = radarTrackToBufstring(*ite);
+                m_send_socks[5]->SendData((unsigned char*)radar_trk_str.c_str(), radar_trk_str.length());
+            }
         }
 
         // 更新融合航迹列表

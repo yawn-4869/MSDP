@@ -78,6 +78,7 @@ bool Config::init(const char* jsonfile)
 	m_server_count = cJSON_GetObjectItem(m_json_data, "server_count")->valueint;
 	m_radar_count = cJSON_GetObjectItem(m_json_data, "radar_count")->valueint;
 	m_send_port_count = cJSON_GetObjectItem(m_json_data, "send_port_count")->valueint;
+	m_server_id = cJSON_GetObjectItem(m_json_data, "server_id")->valueint;
 	m_server_address = cJSON_GetObjectItem(m_json_data, "server_address")->valuestring;
 	m_worker_server_address = cJSON_GetObjectItem(m_json_data, "worker_server_address")->valuestring;
 	m_recv_address = cJSON_GetObjectItem(m_json_data, "recv_address")->valuestring;
