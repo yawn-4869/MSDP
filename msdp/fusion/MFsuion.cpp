@@ -82,6 +82,7 @@ void MFusion::delAndExtra(int64_t fusion_time)
                 // 先把融合列表里面对应的 it->first 和 ite->second.trackNo 初始化
                 iniFusionUnitTrack(it->first, ite->second.TrackNo);
                 ite = it->second.erase(ite);
+                m_associate_map[it->first].erase(ite->second.TrackNo);
             } else {
                 // 外推后的坐标
                 int64_t curr_time = ite->second.currTime;
@@ -123,16 +124,6 @@ void MFusion::delAndExtra(int64_t fusion_time)
 // 删除（初始化）过期的融合单源航迹
 void MFusion::iniFusionUnitTrack( int id, int trackNo)
 {
-    // for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
-    // {
-    //     if (it->assMap[id].unitTrackVec.back().TrackNo == trackNo)
-    //     {
-    //         RadarTrack rt;
-    //         rt.InitInstance();
-    //         it->assMap[id].unitTrackVec.push_back(rt);
-    //         it->assMap[id].weight = 0;
-    //     }
-    // }
     for (auto it = fusionUnits.begin(); it != fusionUnits.end(); ++it)
     {
         if (it->second.assMap[id].unitTrackVec.back().TrackNo == trackNo)
@@ -161,7 +152,7 @@ void MFusion::saveUnitTrack()
 void MFusion::associaFusion()
 {
     // 3路雷达报告
-    for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo) {
+    for (int radarNo = 1; radarNo <= RADAR_NO + 1; ++radarNo) {
         for (auto it = unitTrack[radarNo].begin(); it != unitTrack[radarNo].end(); ++it) {
             // 查找系统航迹中是否已经有这个 trackNo
             bool related = false;
@@ -206,15 +197,6 @@ void MFusion::associaFusion()
         for (auto ite = fusionUnits.begin(); ite != fusionUnits.end(); ++ite) {
             // 根据距离计算是否关联
             double dis = getDis(it->second, ite->second.fRet);
-            // int64_t detaT = m_sys_time - ite->second.fRet.currTime;
-            // double vx = ite->second.fRet.fV * sin(ite->second.fRet.fHead * PI / 180);
-            // double vy = ite->second.fRet.fV * cos(ite->second.fRet.fHead * PI / 180);
-            // // double detaX = detaT / 1000 * vx;
-            // // double detaY = detaT / 1000 * vy;
-            // // double detaZ = detaT / 1000 * ite->second.vz / 60;
-            // double newX = ite->second.fRet.fX + detaT / 1000 * vx;
-            // double newY = ite->second.fRet.fY + detaT / 1000 * vy;
-            // double dis = Distance(it->second.fX, it->second.fY, ite->second.fRet.fX, ite->second.fRet.fY);
             if (dis < DIS_THRESHOLD)
             {
                 // 需要关联
@@ -231,7 +213,7 @@ void MFusion::associaFusion()
                 continue;
             } else {
                 // 关联失败, 为新的航迹, 建航
-                newSysTrack(it->second,  1);
+                newSysTrack(it->second,  4);
             }
         }
     }
@@ -260,6 +242,7 @@ void MFusion::newSysTrack(RadarTrack rt, int radarNo)
 
     // fusionUnitVec.push_back(fusUnit);
     fusionUnits[fusUnit.newTrackNo] = fusUnit;
+    m_associate_map[radarNo][rt.TrackNo] = fusUnit.newTrackNo;
     APPDEBUGLOG(" [Fusion] new systrk create, systrk_no[%lld] id[%d] unitrk_no[%lld] (%.4f, %.4f)", fusUnit.newTrackNo, fusUnit.fRet.id, rt.TrackNo, fusUnit.fRet.fX, fusUnit.fRet.fX);
 }
 // newRT 加入到 fu
@@ -314,7 +297,7 @@ void MFusion::associaTrack(FusionUnit &fu, RadarTrack newRt, int radarNo, int fl
         // 对系统航迹中雷达 i 的单源航迹为空的情况进行关联
         fu.assMap[radarNo].unitTrackVec.back() = newRt;
         bool isFirst = true;
-        for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo) {
+        for (int radarNo = 1; radarNo <= RADAR_NO + 1; ++radarNo) {
             if (fu.assMap[radarNo].unitTrackVec.size() > 1) {
                 isFirst = false;
                 break;
@@ -357,11 +340,6 @@ void MFusion::associaTrack(FusionUnit &fu, RadarTrack newRt, int radarNo, int fl
     fu.fRet.fHead = sumCource / sumW;
     fu.fRet.SSR = newRt.SSR;
     fu.fRet.currTime = newRt.currTime;
-
-    // if(newRt.TrackNo == 2781) {
-    //     printf("newRt: %f, %f tmpRt: %f, %f\n", newRt.fX, newRt.fY, tmpRt.fX, tmpRt.fY);
-    //     printf("sumX: %f, sumY: %f sumW: %f, x: %f, y: %f\n", sumX, sumY, sumW, fu.fRet.fX, fu.fRet.fY);
-    // }
 }
 
 bool MFusion::SSREixt( RadarTrack rt)
@@ -385,7 +363,6 @@ bool MFusion::SSREixt( RadarTrack rt)
 }
 void MFusion::getFusionRet()
 {
-    // for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end();)
     for (auto it = fusionUnits.begin(); it != fusionUnits.end();)
     {
         bool valid = false;
@@ -405,16 +382,10 @@ void MFusion::getFusionRet()
 
         RadarTrack rt;
         rt.InitInstance();
-        // rt.TrackNo = it->newTrackNo;
-        // rt.id = it->fRet.id;
-        // rt.fX = it->fRet.fX;
-        // rt.fY = it->fRet.fY;
-        // rt.Hei = it->fRet.fHei;
-        // rt.vec = it->fRet.fV;
-        // rt.cource = it->fRet.fHead;
-        // rt.SSR = it->fRet.SSR;
-        // rt.currTime = it->fRet.currTime;
         rt.TrackNo = it->second.newTrackNo;
+        if(m_associate_map[RADAR_NO+1].count(it->second.newTrackNo)) {
+            rt.TrackNo = m_associate_map[RADAR_NO+1][it->second.newTrackNo];
+        }
         rt.id = it->second.fRet.id;
         rt.fX = it->second.fRet.fX;
         rt.fY = it->second.fRet.fY;
@@ -456,7 +427,8 @@ double MFusion::getDis(RadarTrack tk, FusionRet ret)
     double detX = tk.fX - ret.fX;
     double detY = tk.fY - ret.fY;
     double detZ = tk.Hei * 0.3048 - ret.fHei * 0.3048;
-    return sqrt(detX * detX + detY * detY + detZ * detZ);
+    // return sqrt(detX * detX + detY * detY + detZ * detZ);
+    return sqrt(detX * detX + detY * detY);
 }
 double MFusion::detaDis(RadarTrack lastRT, RadarTrack RT)
 {
@@ -483,26 +455,6 @@ void MFusion::prtRTvec(std::vector<RadarTrack> unitTrackVec)
     }
     std::cout << std::endl;
 }
-
-// void MFusion::updateFusionUnitVec(FusionUnit& fusion_unit) {
-//     if(fusionUnitVec.empty()) {
-//         fusionUnitVec.push_back(fusion_unit);
-//         return;
-//     }
-
-//     int i = 0;
-//     while(i < fusionUnitVec.size()) {
-//         if(fusionUnitVec[i].newTrackNo == fusion_unit.newTrackNo) {
-//             break;
-//         }
-//         i++;
-//     }
-//     if(i == fusionUnitVec.size()) {
-//         fusionUnitVec.push_back(fusion_unit);
-//     } else {
-//         fusionUnitVec[i] = fusion_unit;
-//     }
-// }
 
 void MFusion::updateFusionUnits(FusionUnit& fusion_unit) {
     fusionUnits[fusion_unit.newTrackNo] = fusion_unit;
