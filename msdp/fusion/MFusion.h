@@ -14,7 +14,6 @@
 #define DIS_THRESHOLD 3000  // m
 #define MAX_HIS_TERM 10 //计算权重误差的最大历史周期数
 #define NEAR_TRACK_THRESHOLD 8000 // m
-// #define PREMIT_EXTRA_COUNT 3       // 允许的最大外推周期数
 #define PREMIT_EXTRA_COUNT 4       // 允许的最大外推周期数
 #define RADAR_NO 3
 #define WEI_CAL_CYC 10 // 权重计算周期
@@ -65,7 +64,7 @@ public:
         newTrackNo = 0;
         RadarTrack rt;
         rt.InitInstance();
-        for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo)
+        for (int radarNo = 1; radarNo <= RADAR_NO + 1; ++radarNo)
         {
             assMap[radarNo].unitTrackVec.push_back(rt);
             assMap[radarNo].weight = 0;
@@ -122,6 +121,7 @@ public:
 	// std::vector<FusionUnit> fusionUnitVec;
     std::map<int, FusionUnit> fusionUnits;
 	std::list<RadarTrack> fusionRetList; // 存储系统航迹(融合航迹)
+    std::map<int, std::map<int, int>> m_associate_map; // 关联列表, radar_id / server_id , trkno, systrkno
     int64_t m_sys_time{ 0 };
     
     // // 上一周期位置
