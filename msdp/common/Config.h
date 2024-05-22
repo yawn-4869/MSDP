@@ -32,6 +32,7 @@ public:
 	int m_server_count; // 服务器数量
 	int m_radar_count; // 雷达数量
 	int m_send_port_count; // 需要发送的端口数量
+	int m_server_id; // 服务器id
 	std::string m_server_address; // 服务器ip地址
 	std::string m_worker_server_address; // 工作机ip地址
 	std::string m_recv_address; // 接收地址

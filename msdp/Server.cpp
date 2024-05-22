@@ -10,6 +10,7 @@ Server::Server() {
     m_worker_ip = Config::get_instance()->m_worker_server_address;
     m_next_track_number = -1;
     m_last_track_number = -1;
+    m_id = Config::get_instance()->m_radar_count + Config::get_instance()->m_server_id;
 
     // 类初始化
     m_coord_trans.InitOrg(Config::get_instance()->m_fusion_center_lon, Config::get_instance()->m_fusion_center_lat);
@@ -445,6 +446,15 @@ void Server::repProcess(int64_t fusion_time) {
 
         while(m_next_track_number != -1 && m_fusion.getNextTrackNum() < m_next_track_number) {
             m_fusion.sysTrackNoL.pop_front();
+        }
+
+        // 转发接收到的数据
+        for(auto ite = tmp_list.begin(); ite != tmp_list.end(); ite++) {
+            if(m_fusion.m_associate_map[m_id].count(ite->TrackNo)) {
+                ite->TrackNo = m_fusion.m_associate_map[m_id][ite->TrackNo];
+                std::string radar_trk_str = radarTrackToBufstring(*ite);
+                m_send_socks[5]->SendData((unsigned char*)radar_trk_str.c_str(), radar_trk_str.length());
+            }
         }
 
         // 更新融合航迹列表

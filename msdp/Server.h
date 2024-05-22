@@ -40,6 +40,7 @@ private:
 private:
     EventLoop* m_main_event_loop;
     IOThreadPool* m_thread_pool; // 线程池
+    int m_id; // 服务器id
     std::string m_ip; // 本机ip地址
     std::string m_worker_ip; // 工作机ip地址
     std::vector<CNetSocket*> m_recv_socks; // 接收雷达报文的socket
