@@ -458,4 +458,7 @@ void MFusion::prtRTvec(std::vector<RadarTrack> unitTrackVec)
 
 void MFusion::updateFusionUnits(FusionUnit& fusion_unit) {
     fusionUnits[fusion_unit.newTrackNo] = fusion_unit;
+    for(int i = 1; i <= RADAR_NO + 1; ++i) {
+        m_associate_map[i][fusion_unit.assMap[i].unitTrackVec.back().TrackNo] = fusion_unit.newTrackNo;
+    }
 }
