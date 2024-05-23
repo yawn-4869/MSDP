@@ -451,9 +451,11 @@ void Server::repProcess(int64_t fusion_time) {
         // 转发接收到的数据
         for(auto ite = tmp_list.begin(); ite != tmp_list.end(); ite++) {
             if(m_fusion.m_associate_map[m_id].count(ite->TrackNo)) {
+                ite->id = m_id;
                 ite->TrackNo = m_fusion.m_associate_map[m_id][ite->TrackNo];
                 std::string radar_trk_str = radarTrackToBufstring(*ite);
                 m_send_socks[5]->SendData((unsigned char*)radar_trk_str.c_str(), radar_trk_str.length());
+                APPDEBUGLOG("[Send] online track data: trkno[%lld] id[%d] (%.4f, %.4f)", ite->TrackNo, ite->id, ite->fX, ite->fY);
             }
         }
 
@@ -491,11 +493,6 @@ void Server::repProcess(int64_t fusion_time) {
     m_next_track_number = m_fusion.getNextTrackNum();
 
     // 融合单元发送给其他服务器
-    // for(int i = 0; i < m_fusion.fusionUnitVec.size(); ++i) {
-    //     FusionUnit fusion_unit = m_fusion.fusionUnitVec[i];
-    //     std::string fusion_unit_str = fusionUnitToBufString(fusion_unit);
-    //     m_send_socks[4]->SendData((unsigned char*)fusion_unit_str.c_str(), fusion_unit_str.length());
-    // }
     for(auto ite = m_fusion.fusionUnits.begin(); ite != m_fusion.fusionUnits.end(); ite++) {
         FusionUnit fusion_unit = ite->second;
         std::string fusion_unit_str = fusionUnitToBufString(fusion_unit);
