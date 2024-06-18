@@ -10,7 +10,7 @@ Server::Server() {
     m_worker_ip = Config::get_instance()->m_worker_server_address;
     m_next_track_number = -1;
     m_last_track_number = -1;
-    m_id = Config::get_instance()->m_radar_count + Config::get_instance()->m_server_id;
+    m_id = 4;
 
     // 类初始化
     m_coord_trans.InitOrg(Config::get_instance()->m_fusion_center_lon, Config::get_instance()->m_fusion_center_lat);
@@ -450,9 +450,9 @@ void Server::repProcess(int64_t fusion_time) {
 
         // 转发接收到的数据
         for(auto ite = tmp_list.begin(); ite != tmp_list.end(); ite++) {
-            if(m_fusion.m_associate_map[m_id].count(ite->TrackNo)) {
+            if(m_fusion.m_associate_map[ite->id].count(ite->TrackNo)) {
+                ite->TrackNo = m_fusion.m_associate_map[ite->id][ite->TrackNo];
                 ite->id = m_id;
-                ite->TrackNo = m_fusion.m_associate_map[m_id][ite->TrackNo];
                 std::string radar_trk_str = radarTrackToBufstring(*ite);
                 m_send_socks[5]->SendData((unsigned char*)radar_trk_str.c_str(), radar_trk_str.length());
                 APPDEBUGLOG("[Send] online track data: trkno[%lld] id[%d] (%.4f, %.4f)", ite->TrackNo, ite->id, ite->fX, ite->fY);

@@ -192,31 +192,31 @@ void MFusion::associaFusion()
     }
 
     // 其他服务器的离线报告
-    for (auto it = unitTrack[RADAR_NO+1].begin(); it != unitTrack[RADAR_NO+1].end(); ++it) {
-        bool related = false;
-        for (auto ite = fusionUnits.begin(); ite != fusionUnits.end(); ++ite) {
-            // 根据距离计算是否关联
-            double dis = getDis(it->second, ite->second.fRet);
-            if (dis < DIS_THRESHOLD)
-            {
-                // 需要关联
-                // associaTrack(*ite, it->second, radarNo, 0);
-                // associaTrack(ite->second, it->second, RADAR_NO+1, 1);
-                related = true;
-                break;
-            }
-        }
-        if (!related) {
-            // 如果附近有 SSR 相同的航迹，则不要新建系统航迹
-            // if (SSREixt(fusionUnitVec, it->second))
-            if (SSREixt( it->second)) {
-                continue;
-            } else {
-                // 关联失败, 为新的航迹, 建航
-                newSysTrack(it->second,  4);
-            }
-        }
-    }
+    // for (auto it = unitTrack[RADAR_NO+1].begin(); it != unitTrack[RADAR_NO+1].end(); ++it) {
+    //     bool related = false;
+    //     for (auto ite = fusionUnits.begin(); ite != fusionUnits.end(); ++ite) {
+    //         // 根据距离计算是否关联
+    //         double dis = getDis(it->second, ite->second.fRet);
+    //         if (dis < DIS_THRESHOLD)
+    //         {
+    //             // 需要关联
+    //             // associaTrack(*ite, it->second, radarNo, 0);
+    //             // associaTrack(ite->second, it->second, RADAR_NO+1, 1);
+    //             related = true;
+    //             break;
+    //         }
+    //     }
+    //     if (!related) {
+    //         // 如果附近有 SSR 相同的航迹，则不要新建系统航迹
+    //         // if (SSREixt(fusionUnitVec, it->second))
+    //         if (SSREixt( it->second)) {
+    //             continue;
+    //         } else {
+    //             // 关联失败, 为新的航迹, 建航
+    //             newSysTrack(it->second,  4);
+    //         }
+    //     }
+    // }
 }
 
 void MFusion::newSysTrack(RadarTrack rt, int radarNo)
@@ -319,7 +319,7 @@ void MFusion::associaTrack(FusionUnit &fu, RadarTrack newRt, int radarNo, int fl
     // 重新计算融合结果
     RadarTrack tmpRt;
     double weight = 0, sumX = 0, sumY = 0, sumHei = 0, sumVec = 0, sumCource = 0, sumW = 0;
-    for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo) {
+    for (int radarNo = 1; radarNo <= RADAR_NO + 1; ++radarNo) {
         weight = fu.assMap[radarNo].weight;
         tmpRt = fu.assMap[radarNo].unitTrackVec.back();
         if(tmpRt.TrackNo == -1) {
@@ -366,7 +366,7 @@ void MFusion::getFusionRet()
     for (auto it = fusionUnits.begin(); it != fusionUnits.end();)
     {
         bool valid = false;
-        for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo) {
+        for (int radarNo = 1; radarNo <= RADAR_NO + 1; ++radarNo) {
             // if (it->assMap[radarNo].unitTrackVec.back().TrackNo != -1) {
             if (it->second.assMap[radarNo].unitTrackVec.back().TrackNo != -1) {
                 valid = true;
@@ -401,7 +401,7 @@ void MFusion::getFusionRet()
     // for (auto it = fusionUnitVec.begin(); it != fusionUnitVec.end(); ++it)
     for (auto it = fusionUnits.begin(); it != fusionUnits.end(); ++it)
     {
-        for (int radarNo = 1; radarNo <= RADAR_NO; ++radarNo)
+        for (int radarNo = 1; radarNo <= RADAR_NO + 1; ++radarNo)
         // for (int radarNo = 1; radarNo <=  it->assMap.size(); ++radarNo)
         {
             std::stringstream ss;
@@ -460,5 +460,7 @@ void MFusion::updateFusionUnits(FusionUnit& fusion_unit) {
     fusionUnits[fusion_unit.newTrackNo] = fusion_unit;
     for(int i = 1; i <= RADAR_NO + 1; ++i) {
         m_associate_map[i][fusion_unit.assMap[i].unitTrackVec.back().TrackNo] = fusion_unit.newTrackNo;
+        APPDEBUGLOG(" [ASSOCIATE] associate map info: radar_id: %d, trk_no: %d, systrk_no: %d", i, 
+        fusion_unit.assMap[i].unitTrackVec.back().TrackNo, fusion_unit.newTrackNo);
     }
 }
