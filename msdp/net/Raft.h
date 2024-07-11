@@ -8,6 +8,7 @@
 #include "TimerEvent.h"
 #include "IOThread.h"
 #include <locker.h>
+#include <buttonrpc.hpp>
 
 enum ServerRole {
     FOLLOWER = 1,
@@ -15,14 +16,85 @@ enum ServerRole {
     LEADER = 3
 };
 
-class LogEntry {
-public:
-    LogEntry(int term, std::string& command, int idx) : m_term(term), m_idx(idx), m_command(command) {}
-    int getLogTerm() {
-        return m_term;
-    }
+struct VoteRequestArgs {
+    uint32_t term;
+    uint8_t id;
+    uint32_t last_log_idx;
+    uint32_t last_log_term;
+    VoteRequestArgs() : term(0), id(0), last_log_idx(0), last_log_term(0) {}
+    VoteRequestArgs(uint32_t _term, uint8_t _id, uint32_t _last_log_idx, uint32_t _last_log_term)
+            : term(_term), id(_id), last_log_idx(_last_log_idx), last_log_term(_last_log_term) {}
+    // must implement
+	friend Serializer& operator >> (Serializer& in, VoteRequestArgs& d) {
+		in >> d.term >> d.id >> d.last_log_idx >> d.last_log_term;
+		return in;
+	}
+	friend Serializer& operator << (Serializer& out, VoteRequestArgs d) {
+		out << d.term << d.id << d.last_log_idx << d.last_log_term;
+		return out;
+	}
+};
 
-private:
+struct RequestVoteReply {
+    uint32_t term;
+    bool vote_granted;
+    RequestVoteReply() : term(0), vote_granted(false) {}
+    RequestVoteReply(uint32_t _term, uint8_t _vote_granted)
+            : term(_term), vote_granted(_vote_granted) {}
+    // must implement
+	friend Serializer& operator >> (Serializer& in, RequestVoteReply& d) {
+		in >> d.term >> d.vote_granted;
+		return in;
+	}
+	friend Serializer& operator << (Serializer& out, RequestVoteReply d) {
+		out << d.term << d.vote_granted;
+		return out;
+	}
+};
+
+struct AppendLogArgs {
+    uint32_t term;
+    uint8_t id;
+    uint32_t prev_log_idx;
+    uint32_t prev_log_term;
+    int32_t leader_commit_idx;
+    std::string commands;
+    AppendLogArgs() : term(0), id(), prev_log_idx(0), prev_log_term(0), leader_commit_idx(0) {}
+    AppendLogArgs(uint8_t _id, uint32_t _term, uint32_t _log_idx, uint32_t _log_term, uint32_t _commit_idx) : 
+                term(_term), id(_id), prev_log_idx(_log_idx), prev_log_term(_log_term), leader_commit_idx(_commit_idx) {}
+    friend Serializer& operator >> (Serializer& in, AppendLogArgs& d) {
+		in >> d.term >> d.id >> d.prev_log_idx >> d.prev_log_term >> d.leader_commit_idx;
+		return in;
+	}
+	friend Serializer& operator << (Serializer& out, AppendLogArgs d) {
+		out << d.term << d.id << d.prev_log_idx << d.prev_log_term << d.leader_commit_idx;
+		return out;
+	}
+};
+
+struct LogAppendReply {
+    uint32_t term;
+    bool success;
+    uint32_t last_idx; // success == true: 向 leader 指示 nextIndex, success == false: 向 leader 传递发生冲突的日志索引, 便于快速匹配
+    uint32_t last_term; // success == true: 向 leader 指示 term, success == false: 传递发生冲突的冲突的日志任期, 便于 leader 快速定位
+    LogAppendReply() : term(0), success(false), last_idx(0), last_term(0) {}
+    LogAppendReply(uint32_t _term, uint8_t _success, uint32_t idx, uint32_t conflict)
+            : term(_term), success(_success), last_idx(idx), last_term(conflict) {}
+    // must implement
+	friend Serializer& operator >> (Serializer& in, LogAppendReply& d) {
+		in >> d.term >> d.success >> d.last_idx;
+		return in;
+	}
+	friend Serializer& operator << (Serializer& out, LogAppendReply d) {
+		out << d.term << d.success << d.last_idx;
+		return out;
+	}
+};
+
+struct LogEntry {
+    LogEntry() : m_term(0), m_idx(0) {}
+    LogEntry(uint32_t term, const std::string& command, uint32_t idx) : m_term(term), m_idx(idx), m_command(command) {}
+
     uint32_t m_term; // 任期号
     std::string m_command; // 状态机指令
     uint32_t m_idx; // 日志索引
@@ -32,78 +104,67 @@ class Raft {
 public:
     Raft(uint8_t id);
     ~Raft();
+    void start();
     void handleTimeout();
-    void callRequestVote(int peer_id);
-    void callRequestAppendLog(int peer_id);
-    void responseToRequest();
-    void resetTimeout(EventLoop* event_loop, TimerEvent::s_ptr time_event);
+    void callRequestVote(int peer_id, VoteRequestArgs args);
+    void callRequestAppendLog(int peer_id, AppendLogArgs args);
+    static void* listenForVote(void* arg);
+    static void* listenForLogAppend(void* arg);
+    RequestVoteReply replyToVote(VoteRequestArgs args);
+    LogAppendReply replyToLogAppend(AppendLogArgs args);
+
+private:
+    void resetTimeout(EventLoop* event_loop, TimerEvent::s_ptr time_event); // TODO: 可能需要修改
+    bool checkLogUpdate(int term, int log_idx);
+    int findLastMatched(AppendLogArgs& args);
+    void logSerialize(const std::vector<LogEntry>& input, std::string& output);
+    void logDeserialize(const std::string& input, std::vector<LogEntry>& output);
+
 private:
     ServerRole m_role {ServerRole::FOLLOWER}; // 服务器类别, 初始化时均为FOLLOWER
     uint8_t m_id; // 服务器id
 
     // 所有服务器的持久性状态
-    int32_t m_current_term {0}; // 服务器已知最新的任期
-    uint8_t m_voted_for {0}; // 当前任期内收到选票的 candidate 的id
-    std::vector<LogEntry> m_log_entries; // 日志条目, 用于修改状态机
+    int32_t m_current_term {0};             // 服务器已知最新的任期
+    uint8_t m_voted_for {0};                // 当前任期内收到选票的 candidate 的id
+    std::vector<LogEntry> m_log_entries;    // 日志条目, 用于修改状态机
     std::vector<int> m_peers;
+    std::vector<pair<int, int>> m_peers_info; // 集群服务器的端口信息, first -> vote port second -> log port
 
     // 所有服务器的易失性状态
-    int32_t m_commit_idx {0}; // 已知已提交的最高的日志条目的索引
+    int32_t m_commit_idx {0};   // 已知已提交的最高的日志条目的索引
     int32_t m_last_applied {0}; // 已经被应用到状态机的最高的日志条目的索引
-    uint8_t m_recv_votes {0}; // 已收到的选票数量
+    uint8_t m_recv_votes {0};   // 已收到的选票数量
 
     // leader服务器的易失性状态
     std::unordered_map<int, int> m_next_idx_for_nodes; // 对于每一台服务器，发送到该服务器的下一个日志条目的索引
     std::unordered_map<int, int> m_match_idx_for_nodes; // 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引
 
     EventLoop* m_main_event_loop;
-    TimerEvent::s_ptr m_election_timer_event; // 定时器
-    IOThread* m_election_thread; // 选举线程
+    TimerEvent::s_ptr m_timer_event; // 定时器
+    
 
-    // TODO: Vote RPC实现
-    // 参数
-    // | term         | 候选人的任期号               |
-    // | candidateId  | 请求选票的候选人的 ID        |
-    // | lastLogIndex | 候选人的最后日志条目的索引值 |
-    // | lastLogTerm  | 候选人最后日志条目的任期号   |
-    // 返回值
-    // | term        | 当前任期号，以便于候选人去更新自己的任期号 |
-    // | voteGranted | 候选人赢得了此张选票时为真                |
+    // rpc客户端与服务端
+    buttonrpc m_vote_client;
+    buttonrpc m_vote_server;
+    buttonrpc m_log_client;
+    buttonrpc m_log_server;
 
-    // candidate 服务器调用 Vote Request
-    // 对于candiate:
-    // 1. 初始：自增curent_term, 给自己投票, 重置
-    // 2. 给自己投票
-    // 3. 重置选举超时计时器
-    // 4. 发送请求投票RPC给其他服务器（组播/广播实现）
-    // 对于follower:
-    // 只要在超时时间内收到了来自candidate的Vote Request或者来自leader的AppendEntries Request, 都需要重置超时计时器
-    // 校验 leader 合法性: 
-    // 1. term < current_term false reject
-    // voted_for == 0 || voted == candidate_id voteGranted = true
+    // 线程
+    pthread_t m_t_vote_id;
+    pthread_t m_t_log_id;
 
-    // TODO: AppendEntries RPC实现
-    // 参数
-    // | term         | 领导人的任期                                                 |
-    // | leaderId     | 领导人 ID 因此跟随者可以对客户端进行重定向（译者注：跟随者根据领导人 ID 把客户端的请求重定向到领导人，比如有时客户端把请求发给了跟随者而不是领导人） |
-    // | prevLogIndex | 紧邻新日志条目之前的那个日志条目的索引                       |
-    // | prevLogTerm  | 紧邻新日志条目之前的那个日志条目的任期                       |
-    // | log_entries[]    | 需要被保存的日志条目（被当做心跳使用时，则日志条目内容为空；为了提高效率可能一次性发送多个） |
-    // | leaderCommit | 领导人的已知已提交的最高的日志条目的索引                     |
-    // 返回值
-    // | term    | 当前任期，对于领导人而言 它会更新自己的任期                  |
-    // | success | 如果跟随者所含有的条目和 prevLogIndex 以及 prevLogTerm 匹配上了，则为 true |
+    // 端口
+    int m_vote_port;
+    int m_log_port;
 
-    // leader服务器调用 AppendEntries RPC Request
-    // 对于leader: 
-    // 
-    // followers 调用的 AppendEntries RPC Response 
-    // 对于follower: 
-    // 如果leader的任期小于follower的当前任期, false, reject
-    // 跟随follower日志中找不到包含相同索引位置和任期号的log_entry(pre_log_idx 以及 pre_log_term) false, reject
-    // 已存在的条目和leader发送的条目冲突, 删除这个条目及其之后的所有条目
-    // 日志中尚未存在该条目: accepted
-    // 更新m_commit_idx为min(leader_commit_idx, pre_log_idx)
+    // rpc 超时时间
+    int m_rpc_timeout;
+
+    // 选举参数
+    VoteRequestArgs m_vote_req_args;
+    RequestVoteReply m_vote_reply;
+    AppendLogArgs m_append_log_args;
 };
 
 #endif
