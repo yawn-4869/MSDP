@@ -1,0 +1,12 @@
+syntax = "proto3";
+option cc_generic_services = true;
+
+message LogEntryMessage {
+    int32 m_term = 1;
+    string m_command = 2;
+    int32 m_idx = 3;
+}
+
+message LogsMessage {
+    repeated LogEntryMessage entries = 1;
+}

@@ -161,7 +161,8 @@ int HeartBeat::recvMsg() {
                     // 节点之前已经因为超时而被标记为失连
                     // 需要重新计算在网时间
                     m_node_map[ip].is_alive = true;
-                    m_node_map[ip].join_time = msg.timestamp;
+                    // m_node_map[ip].join_time = msg.timestamp;
+                    m_node_map[ip].join_time = msg.timestamp - msg.alive_time;
                 }
                 m_node_map[ip].last_time = msg.timestamp;
             }

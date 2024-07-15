@@ -14,6 +14,7 @@ set(CMAKE_CXX_COMPILER g++)
 
 # 查找 Protobuf 库
 find_package(Protobuf REQUIRED)
+find_package(cppzmq)
 find_library(ROCKET_LIB rocket PATHS /usr/local/lib)
 find_library(TINYXML_LIB tinyxml PATHS /usr/lib)
 
@@ -48,8 +49,11 @@ set(LIB_RPC_PB ${LIB_RPC_DIR}/pb)
 set(LIB_RPC_SERVICE ${LIB_RPC_DIR}/service)
 set(LIB_RPC_STUBS ${LIB_RPC_DIR}/stubs)
 
+set(BUTTON_RPC_DIR ${PROJECT_SOURCE_DIR}/buttonrpc)
+set(BUTTON_RPC_DEP ${BUTTON_RPC_DIR}/depends)
+
 # 添加 .proto 文件
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MSDP_PROTO_DIR}/fusion.proto)
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MSDP_PROTO_DIR}/fusion.proto ${MSDP_PROTO_DIR}/raft.proto)
 
 # 收集所有子目录的源文件
 file(GLOB_RECURSE MSDP_SOURCES
@@ -68,6 +72,11 @@ file (GLOB_RECURSE LIB_RPC_SOURCES
     ${LIB_RPC_STUBS}/*.cc
 )
 
+# file (GLOB_RECURSE BUTTON_RPC_SOURCES
+#     ${BUTTON_RPC_DEP}/*.hpp
+#     ${BUTTON_RPC_DIR}/*.hpp
+# )
+
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 # 生成rpc静态库
 add_library(librpc STATIC ${LIB_RPC_SOURCES})
@@ -82,7 +91,8 @@ add_executable(msdp_app ${MSDP_SOURCES} ${PROTO_SRCS} ${PROTO_HDRS})
 target_include_directories(msdp_app PRIVATE ${MSDP_ROOT_DIR} ${MSDP_COMMON_DIR} 
     ${MSDP_FUSION_DIR} ${MSDP_NET_DIR} ${MSDP_TOOLS_DIR} ${MSDP_PROTO_OUT}
     ${LIB_RPC_COMM} ${LIB_RPC_INTERFACE} ${LIB_RPC_PB} ${LIB_RPC_SERVICE} ${LIB_RPC_STUBS}
+    ${BUTTON_RPC_DIR}
 )
 
 # 链接 Protobuf 库
-target_link_libraries(msdp_app ${PROTOBUF_LIBRARIES} ${ROCKET_LIB} ${TINYXML_LIB} )
+target_link_libraries(msdp_app cppzmq ${PROTOBUF_LIBRARIES} ${ROCKET_LIB} ${TINYXML_LIB})
