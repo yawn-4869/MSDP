@@ -1,345 +1,483 @@
-#include <random>
-// #include <google/protobuf/service.h>
-// #include <rocket/net/rpc/rpc_channel.h>
-// #include <rocket/net/rpc/rpc_controller.h>
-// #include <rocket/net/rpc/rpc_closure.h>
-// #include <rocket/common/log.h>
-// #include <rocket/common/error_code.h>
-// #include <rocket/net/tcp/net_addr.h>
-// #include <rocket/net/tcp/tcp_server.h>
-#include <math.h>
-#include "Config.h"
 #include "Raft.h"
-// #include "raft_server.h"
-#include "raft.pb.h"
-#include "fusion.pb.h"
+#include "utils.h"
+#include "Config.h"
 
-Raft::Raft(uint8_t id) : m_id(id) {
-    // 初始化指针
-    m_main_event_loop = EventLoop::GetCurrentEventloop();
+void Raft::init() {
+    Config* g_config = Config::get_instance();
+    m_id = g_config->m_server_id;
 
-    m_rpc_timeout = 2000;
-
-    m_vote_client.set_timeout(m_rpc_timeout);
-    m_log_client.set_timeout(m_rpc_timeout);
-
-    for(int i = 0; i < Config::get_instance()->m_server_count; ++i) {
-        m_peers_info.emplace_back(4001+i, 5001+i);
+    for(int i = 0; i < g_config->m_server_count; ++i) {
+        m_peers.emplace_back(4001, 5001, i);
+        m_next_index.push_back(1);
+        m_match_index.push_back(0);
     }
+
+    m_last_wake = getNowMs();
     
-    // 定时器设定在200-400ms随机
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
-    m_timer_event = std::make_shared<TimerEvent>(std::rand() % 201 + 200, false, std::bind(&Raft::handleTimeout, this));
-    m_main_event_loop->addTimerEvent(m_timer_event);
-    pthread_create(&m_t_vote_id, NULL, listenForVote, this);
-    pthread_create(&m_t_log_id, NULL, listenForLogAppend, this);
+    pthread_t listen_tid1;
+    pthread_t listen_tid2;
+    pthread_t listen_tid3;
+    pthread_create(&listen_tid1, NULL, listenForVote, this);
+    pthread_detach(listen_tid1);
+    pthread_create(&listen_tid2, NULL, listenForAppend, this);
+    pthread_detach(listen_tid2);
 }
 
-void Raft::start() {
-    m_main_event_loop->loop();
+int64_t Raft::getMyDuration(int64_t last) {
+    return getNowMs() - last;
 }
 
-Raft::~Raft() {
-    if(m_main_event_loop) {
-        delete m_main_event_loop;
-    }
-}
-
-void Raft::handleTimeout() {
-    if(m_role == ServerRole::FOLLOWER) {
-        // follower超时, 成为candidate
-        m_role = ServerRole::CANDIDATE;
-        // 自增任期号, 给自己投票, 重置计时器, 发送 vote request
-        m_current_term++;
-        m_vote_req_args.id = m_id;
-        m_vote_req_args.term = m_current_term;
-        // TODO: last_log_idx 和 last_log_term 两个参数的值是否是这两个？
-        m_vote_req_args.last_log_idx = m_log_entries.size() - 1;
-        m_vote_req_args.last_log_term = m_log_entries.back().m_term;
-        m_voted_for = m_id;
-        m_recv_votes = 1; // 每次发起选举的时候都需要重置选票
-        for(int peer_id : m_peers) {
-            if(peer_id == m_id) {
-                continue;
-            }
-            callRequestVote(peer_id, m_vote_req_args);
-        }
-
-    } else if(m_role == ServerRole::CANDIDATE) {
-        // candidate 超时
-        // 重新发起选举
-        // 重新发起选举的话, 需要增加当前任期, 以表示这是新一轮的选举, 以免混淆
-        m_current_term++;
-        m_vote_req_args.term = m_current_term;
-        m_vote_req_args.last_log_idx = m_log_entries.size() - 1;
-        m_vote_req_args.last_log_term = m_log_entries.back().m_term;
-        m_voted_for = m_id;
-        m_recv_votes = 1; // 每次发起选举的时候都需要重置选票
-        for(int peer_id : m_peers) {
-            if(peer_id == m_id) {
-                continue;
-            }
-            callRequestVote(peer_id, m_vote_req_args);
-        }
-    } else {
-        // leader 需要定时发送 logAppendRequest 给所有服务器
-        for(int peer_id : m_peers) {
-            if(peer_id == m_id) {
-                continue;
-            }
-            m_append_log_args.id = m_id;
-            m_append_log_args.term = m_current_term;
-            // m_append_log_args.prev_log_idx = m_log_entries.size();
-            // m_append_log_args.prev_log_term = m_log_entries.back().m_term;
-            callRequestAppendLog(peer_id, m_append_log_args);
-        }
-    }
-
-    // 重置时间
-    resetTimeout(m_main_event_loop, m_timer_event);
-}
-
-void Raft::callRequestVote(int peer_id, VoteRequestArgs args) {
-
-    m_vote_client.as_client("127.0.0.1", m_peers_info[peer_id - 1].first);
-    RequestVoteReply reply = m_vote_client.call<RequestVoteReply>("replyToVote", args).val();
-    if(reply.term > m_current_term) {
-        // 回退到 follower 后重置计时器
-        m_role = FOLLOWER;
-        m_current_term = reply.term;
-        m_voted_for = 0;
-        resetTimeout(m_main_event_loop, m_timer_event);
-        return;
-    }
-    if(reply.vote_granted) {
-        m_recv_votes++;
-    }
-
-    if(m_recv_votes > m_peers.size() / 2) {
-        // 半数通过, 成为领导人, 重置定时器
-        m_role = LEADER;
-        resetTimeout(m_main_event_loop, m_timer_event);
-    }
-}
-
-RequestVoteReply Raft::replyToVote(VoteRequestArgs args) {
-    RequestVoteReply reply;
-    reply.term = m_current_term;
-    if(m_current_term > args.term) {
-        return reply;
-    }
-
-    if(m_current_term < args.term) {
-        m_role = FOLLOWER;
-        m_current_term = args.term;
-        m_voted_for = 0;
-    }
-
-    if(m_voted_for == 0 || m_voted_for == args.id) {
-        if(!checkLogUpdate(args.last_log_term, args.last_log_idx)) {
-            m_voted_for = 0;
-            return reply;
-        }
-    }
-
-    // 合法性校验通过, 重置定时器
-    resetTimeout(m_main_event_loop, m_timer_event);
-
-    m_voted_for = args.id;
-    reply.vote_granted = true;
-    return reply;
-}
-
-void Raft::callRequestAppendLog(int peer_id, AppendLogArgs args) {
-    m_log_client.as_client("127.0.0.1", m_peers_info[peer_id-1].second);
-    LogAppendReply reply = m_log_client.call<LogAppendReply>("replyToLogAppend", args).val();
-    if(reply.term > m_current_term) {
-        // leader 过期, 回退到 follower, 重置定时器
-        m_role = FOLLOWER;
-        m_current_term = reply.term;
-        m_voted_for = 0;
-        resetTimeout(m_main_event_loop, m_timer_event);
-        return;
-    }
-
-    if(reply.success) {
-        // 成功, 获取 nextIndex 后的所有日志, 发送给该 follower 
-        // 目前的实现方式：
-        // leader 需要将 m_log_entries nextIndex 后的日志条目序列化, 序列化后存储到 AppendLogArgs commands 中发送
-        // follower 需要对接收到的 AppendLogArgs commands 进行解序列化
-        // 序列化和解序列化可能需要 protobuf 实现
-        // 更新 leader 中存储的 peer 对应的 nextIndex 和 matchIndex 信息
-        m_next_idx_for_nodes[peer_id] = reply.last_idx + 1;
-        m_match_idx_for_nodes[peer_id] = reply.last_idx;
-
-    } else {
-        // 失败, 根据 reply 中的冲突索引和冲突任期进行调整
-        if(reply.last_term != 0) {
-            // 任期冲突调整, 找到索引和任期都匹配的项
-            int leader_conflict_idx = -1;
-            for(int i = args.prev_log_idx; i >= 1; --i) {
-                if(m_log_entries[i - 1].m_term == reply.last_term) {
-                    leader_conflict_idx = i;
-                    break;
-                }
-            }
-
-            if(leader_conflict_idx != -1) {
-                // 找到匹配项
-                m_next_idx_for_nodes[peer_id] = leader_conflict_idx + 1;
-            } else {
-                // 未找到, 直接跳到 last_idx, 下一次再进行匹配
-                m_next_idx_for_nodes[peer_id] = reply.last_idx;
-            }
-            
-        } else {
-            m_next_idx_for_nodes[peer_id] = reply.last_idx + 1;
-        }
-    }
+void Raft::setBroadcastTime() {
+    m_last_broadcast -= 200;
 }
 
 void* Raft::listenForVote(void* arg) {
     Raft* raft = static_cast<Raft*>(arg);
-    raft->m_vote_server.as_server(raft->m_peers_info[raft->m_id-1].first);
-    raft->m_vote_server.bind("replyToVote", &Raft::replyToVote, raft);
-    raft->m_vote_server.run();
+    buttonrpc server;
+    // TODO: vote端口
+    server.as_server(4001);
+    server.bind("replyToVote", &Raft::replyToVote, raft);
+
+    pthread_t wait_tid;
+    pthread_create(&wait_tid, NULL, electionLoop, raft);
+    pthread_detach(wait_tid);
+
+    server.run();
+    printf("exit\n");
 }
 
-void* Raft::listenForLogAppend(void* arg) {
-    Raft* raft = static_cast<Raft*>(arg);
-    raft->m_log_server.as_server(raft->m_peers_info[raft->m_id-1].first);
-    raft->m_log_server.bind("replyToLogAppend", &Raft::replyToLogAppend, raft);
-    raft->m_log_server.run();
+void* Raft::listenForAppend(void* arg){
+    Raft* raft = (Raft*)arg;
+    buttonrpc server;
+    // TODO: log append端口
+    server.as_server(5001);
+    server.bind("replyToAppend", &Raft::replyToAppend, raft);
+    pthread_t heart_tid;
+    pthread_create(&heart_tid, NULL, processEntriesLoop, raft);
+    pthread_detach(heart_tid);
+
+    server.run();
+    printf("exit!\n");
 }
 
-LogAppendReply Raft::replyToLogAppend(AppendLogArgs args) {
-    LogAppendReply reply;
-    reply.term = m_current_term;
+void* Raft::electionLoop(void* arg) {
+    Raft* raft = (Raft*)arg;
+    bool reset_flg = false;
 
-    // 比较任期
-    if(m_current_term > args.term) {
-        return reply;
-    }
+    while(!raft->m_is_dead) {
+        int time_out = rand() % 200 + 200;
+        while(1) {
+            raft->m_lock.lock();
+            int64_t duration = raft->getMyDuration(raft->m_last_wake);
+            
+            if(raft->m_state == FOLLOWER && duration > time_out) {
+                raft->m_state = CANDIDATE;
+            }
 
+            if(raft->m_state == CANDIDATE && duration > time_out) {
+                printf(" %d attempt election at term %d, time_out is %d\n", raft->m_id, raft->m_cur_term, time_out);
+                raft->m_last_wake = getNowMs();
+                reset_flg = true;
 
-    if(m_current_term < args.term) {
-        // 一开始写的 <= , 但是从参数来看, 好像直接 < 就可以
-        m_voted_for = 0;
-        m_current_term = args.term;
-        m_role = FOLLOWER;
-    }
+                raft->m_cur_term++;
+                raft->m_voted_for = raft->m_id;
+                // raft->saveRaftState();
+                raft->m_recv_votes = 1;
+                raft->m_finished_vote = 1;
+                raft->m_cur_peer_id = 0;
+                pthread_t tid[raft->m_peers.size() - 1];
+                int i = 0;
+                for(auto server : raft->m_peers){
+                    if(server.m_id == raft->m_id) continue;
+                    pthread_create(tid + i, NULL, callRequestVote, raft);
+                    pthread_detach(tid[i]);
+                    i++;
+                }
 
-    // 重置计时器
-    resetTimeout(m_main_event_loop, m_timer_event);
+                while(raft->m_recv_votes <= raft->m_peers.size() / 2 && raft->m_finished_vote != raft->m_peers.size()){
+                    raft->m_cond.wait(raft->m_lock.getMutex());
+                }
 
-    // 比较日志的任期和索引
-    // 1. 日志为空, 直接添加
-    if(m_log_entries.empty()) {
-        vector<LogEntry> tmp_logs;
-        // 解序列化
-        logDeserialize(args.commands, tmp_logs);
-        for(auto log : tmp_logs) {
-            m_log_entries.push_back(log);
-        }
-        reply.success = true;
-        reply.last_idx = m_log_entries.size();
-        reply.last_term = m_log_entries.back().m_term;
-        return reply;
-    }
+                if(raft->m_state != CANDIDATE){
+                    raft->m_lock.unlock();
+                    continue;
+                }
 
-    // 2. 日志不空, 比较是否有匹配项
-    if(m_log_entries.size() < args.prev_log_idx) {
-        reply.last_idx = m_log_entries.size();
-        return reply;
-    }
+                if(raft->m_recv_votes > raft->m_peers.size() / 2) {
+                    raft->m_state = LEADER;
 
-    // 匹配出现冲突, 传给 leader 处理
-    if(args.prev_log_idx > 0 && m_log_entries[args.prev_log_idx - 1].m_term != args.prev_log_term) {
-        // 索引号相同但是周期不同, 删除该项及以后的项
-        reply.last_term = m_log_entries[args.prev_log_idx - 1].m_term;
-        // 找到该 term 的第一个索引
-        for(int i = 1; i <= args.prev_log_idx; ++i) {
-            if(m_log_entries[i].m_term == args.prev_log_term) {
-                reply.last_idx = i;
+                    for(int i = 0; i < raft->m_peers.size(); i++){
+                        // raft->m_next_index[i] = raft->lastIndex() + 1;
+                        raft->m_next_index[i] = raft->m_logs.size() + 1;
+                        raft->m_match_index[i] = 0;
+                    }
+
+                    printf(" %d become new leader at term %d\n", raft->m_id, raft->m_cur_term);
+                    raft->setBroadcastTime();
+                }
+            }
+
+            raft->m_lock.unlock();
+            if(reset_flg){
+                reset_flg = false;
                 break;
             }
         }
-        return reply;
     }
-
-    // 匹配成功, 直接添加 
-    // for(int i = args.prev_log_idx; i < m_log_entries.size(); ++i) {
-    //     m_log_entries
-    // }
-    m_log_entries.erase(m_log_entries.begin() + args.prev_log_idx, m_log_entries.end());
-    vector<LogEntry> recv_log;
-    logDeserialize(args.commands, recv_log);
-    for(auto log : recv_log) {
-        m_log_entries.push_back(log);
-    }
-
-    // 更新 commit_idx
-    if(m_commit_idx < args.leader_commit_idx) {
-        m_commit_idx = min(args.leader_commit_idx, (int)m_log_entries.size());
-    }
-    reply.success = true;
-    reply.last_idx = m_log_entries.size();
-    reply.last_term = m_log_entries.back().m_term;
-    return reply;
 }
 
-void Raft::resetTimeout(EventLoop* event_loop, TimerEvent::s_ptr timer_event) {
-    event_loop->deleteTimerEvent(timer_event);
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
-    timer_event->resetInterval(std::rand() % 201 + 200);
-    event_loop->addTimerEvent(timer_event);
+void* Raft::callRequestVote(void* arg) {
+    Raft* raft = static_cast<Raft*>(arg);
+    buttonrpc client;
+    raft->m_lock.lock();
+    RequestVoteArgs args;
+    args.candidateId = raft->m_id;
+    args.term = raft->m_cur_term;
+    args.lastLogIndex = raft->m_logs.size();
+    args.lastLogTerm = raft->m_logs.empty() ? 0 : raft->m_logs.back().m_term;
+    if(raft->m_cur_peer_id == raft->m_id) {
+        raft->m_cur_peer_id++;
+    }
+
+    int client_peer_id = raft->m_cur_peer_id;
+    // TODO: rpc组播地址, vote 端口
+    client.as_client("239.0.0.64", 4001);
+
+    if(raft->m_cur_peer_id == raft->m_peers.size() || 
+        (raft->m_cur_peer_id == raft->m_peers.size() - 1 && raft->m_id == raft->m_cur_peer_id)) {
+        raft->m_cur_peer_id = 0;
+    }
+
+    raft->m_lock.unlock();
+
+    RequestVoteReply reply = client.call<RequestVoteReply>("replyToVote", args).val();
+    raft->m_lock.lock();
+    raft->m_finished_vote++;
+    raft->m_cond.signal();
+    if(reply.term > raft->m_cur_term){
+        raft->m_state = FOLLOWER;
+        raft->m_cur_term = reply.term;
+        raft->m_voted_for = -1;
+        raft->m_lock.unlock();
+        return NULL;
+    }
+
+    if(reply.VoteGranted){
+        raft->m_recv_votes++;
+    }
+
+    raft->m_lock.unlock();
 }
 
-bool Raft::checkLogUpdate(int term, int log_idx) {
-    // 日志为空
-    if(m_log_entries.empty()) {
+bool Raft::checkLogUptodate(int term, int index){
+    int last_term = m_logs.empty() ? 0 : m_logs.back().m_term;
+
+    if(term > last_term){
         return true;
     }
 
-    // 比较候选人term和最后一个日志的term
-    if(term > m_log_entries.back().m_term) {
-        return true;
-    }
-
-    // term相同, 比较日志索引
-    if(term == m_log_entries.back().m_term && log_idx >= m_log_entries.size()) {
+    if(term == last_term && index >= m_logs.size()){
         return true;
     }
 
     return false;
 }
 
-int Raft::findLastMatched(AppendLogArgs& args) {
-    for(auto log : m_log_entries) {
-        if(log.m_term == args.prev_log_term && log.m_idx == args.prev_log_idx) {
-            return log.m_idx;
+RequestVoteReply Raft::replyToVote(RequestVoteArgs args) {
+    RequestVoteReply reply;
+    reply.VoteGranted = false;
+
+    if(m_is_dead) {
+        return reply;
+    }
+
+    m_lock.lock();
+    reply.term = m_cur_term;
+
+    if(m_cur_term > args.term) {
+        m_lock.unlock();
+        return reply;
+    }
+
+    if(m_cur_term < args.term) {
+        m_state = FOLLOWER;
+        m_cur_term = args.term;
+        m_voted_for = -1;
+    }
+
+    if(m_voted_for == -1 || m_voted_for == args.candidateId) {
+        if(!checkLogUptodate(args.lastLogTerm, args.lastLogIndex)) {
+            m_lock.unlock();
+            return reply;
         }
+
+        m_voted_for = args.candidateId;
+        reply.VoteGranted = true;
+        printf("[%d] vote to [%d] at %d, duration is %d\n", m_id, m_voted_for, m_cur_term, getMyDuration(m_last_wake));
+        m_last_wake = getNowMs();
+    }
+    m_lock.unlock();
+    return reply;
+}
+
+void* Raft::processEntriesLoop(void* arg) {
+    Raft* raft = static_cast<Raft*>(arg);
+
+    while(!raft->m_is_dead) {
+        usleep(1000);
+        raft->m_lock.lock();
+        if(raft->m_state != LEADER) {
+            raft->m_lock.unlock();
+            continue;
+        }
+
+        int during_time = raft->getMyDuration(raft->m_last_broadcast);
+        // TODO: 心跳包设置：100ms
+        if(during_time < 100) {
+            raft->m_lock.unlock();
+            continue;
+        }
+
+        raft->m_last_broadcast = getNowMs();
+
+        pthread_t tid[raft->m_peers.size() - 1];
+        int i = 0;
+        for(auto& server : raft->m_peers){
+            if(server.m_id == raft->m_id) continue;
+            // if(raft->m_next_index[server.m_id] <= raft->m_lastIncludedIndex){        //进入install分支的条件，日志落后于leader的快照
+            //     printf("%d send install rpc to %d, whose nextIdx is %d, but leader's lastincludeIdx is %d\n", 
+            //         raft->m_peerId, server.m_peerId, raft->m_nextIndex[server.m_peerId], raft->m_lastIncludedIndex);
+            //     server.isInstallFlag = true;
+            //     pthread_create(tid + i, NULL, sendInstallSnapShot, raft);
+            //     pthread_detach(tid[i]);
+            // }else{
+                // printf("%d send append rpc to %d, whose nextIdx is %d, but leader's lastincludeIdx is %d\n", 
+                    // raft->m_peerId, server.m_peerId, raft->m_nextIndex[server.m_peerId], raft->m_lastIncludedIndex);
+            pthread_create(tid + i, NULL, sendAppendEntries, raft);
+            pthread_detach(tid[i]);
+            // }
+            i++;
+        }
+        raft->m_lock.unlock();
     }
 }
 
-void Raft::logSerialize(const std::vector<LogEntry>& input, std::string& output) {
-    LogsMessage logsMessage;
-    for (const auto entry : input) {
-        LogEntryMessage* logEntryProto = logsMessage.add_entries();
-        logEntryProto->set_m_term(entry.m_term);
-        logEntryProto->set_m_command(entry.m_command);
-        logEntryProto->set_m_idx(entry.m_idx);
+void* Raft::sendAppendEntries(void* arg) {
+    Raft* raft = static_cast<Raft*>(arg);
+
+    buttonrpc client;
+    AppendEntriesArgs args;
+    int clientPeerId;
+    raft->m_lock.lock();
+
+    for(int i = 0; i < raft->m_peers.size(); i++) {
+        if(raft->m_peers[i].m_id == raft->m_id) continue;
+        if(raft->m_is_exist.count(i)) continue;
+        clientPeerId = i;
+        raft->m_is_exist.insert(i);
+        // printf("%d in append insert index : %d, size is %d\n", raft->m_peerId, i, raft->isExistIndex.size());
+        break;
     }
-    if (!logsMessage.SerializeToString(&output)) {
-        throw std::runtime_error("Failed to serialize log entries.");
+
+    // TODO: LogAppend rpc 组播地址 组播端口
+    client.as_client("239.0.0.64", 5001);
+    // printf("%d send to %d's append port is %d\n", raft->m_peerId, clientPeerId, raft->m_peers[clientPeerId].m_port.second);
+
+    if(raft->m_is_exist.size() == raft->m_peers.size() - 1){
+        // printf("append clear size is %d\n", raft->isExistIndex.size());
+        // for(int i = 0; i < raft->m_peers.size(); i++){
+        //     raft->m_peers[i].isInstallFlag = false;
+        // }
+        raft->m_is_exist.clear();
     }
+    
+    args.m_term = raft->m_cur_term;
+    args.m_leaderId = raft->m_id;
+    args.m_prevLogIndex = raft->m_next_index[clientPeerId] - 1;
+    args.m_leaderCommit = raft->m_commit_index;
+
+    for(int i = args.m_prevLogIndex + 1; i < raft->m_logs.size(); i++){
+        args.m_sendLogs += (raft->m_logs[i].m_command + "," + to_string(raft->m_logs[i].m_term) + ";");
+    }
+
+
+    //用作自己调试可能，因为如果leader的m_prevLogIndex为0，follower的size必为0，自己调试直接赋日志给各个server看选举情况可能需要这段代码
+    // if(args.m_prevLogIndex == 0){
+    //     args.m_prevLogTerm = 0;
+    //     if(raft->m_logs.size() != 0){
+    //         args.m_prevLogTerm = raft->m_logs[0].m_term;
+    //     }
+    // }
+    args.m_prevLogTerm = raft->m_logs[args.m_prevLogIndex-1].m_term;
+
+    // printf("[%d] -> [%d]'s prevLogIndex : %d, prevLogTerm : %d\n", raft->m_peerId, clientPeerId, args.m_prevLogIndex, args.m_prevLogTerm); 
+    
+    raft->m_lock.unlock();
+    AppendEntriesReply reply = client.call<AppendEntriesReply>("replyToAppend", args).val();
+
+    raft->m_lock.lock();
+    if(raft->m_cur_term != args.m_term){
+        raft->m_lock.unlock();
+        return NULL;
+    }
+    if(reply.m_term > raft->m_cur_term){
+        raft->m_state = FOLLOWER;
+        raft->m_cur_term = reply.m_term;
+        raft->m_voted_for = -1;
+        raft->m_lock.unlock();
+        return NULL;
+    }
+
+    if(reply.m_success){
+        raft->m_next_index[clientPeerId] = args.m_prevLogIndex + raft->getCmdAndTerm(args.m_sendLogs).size() + 1;  //可能RPC调用完log又增加了，但那些是不应该算进去的，不能直接取m_logs.size() + 1
+        raft->m_match_index[clientPeerId] = raft->m_next_index[clientPeerId] - 1;
+        raft->m_match_index[raft->m_id] = raft->m_logs.size();
+
+        vector<int> tmpIndex = raft->m_match_index;
+        sort(tmpIndex.begin(), tmpIndex.end());
+        int realMajorityMatchIndex = tmpIndex[tmpIndex.size() / 2];
+        if(realMajorityMatchIndex > raft->m_commit_index) {
+            raft->m_commit_index = realMajorityMatchIndex;
+        }
+    }
+
+    if(!reply.m_success) {
+        if(reply.m_conflict_term != -1 && reply.m_conflict_term != -100) {
+            int leader_conflict_index = -1;
+            for(int index = args.m_prevLogIndex; index > 0; index--) {
+                if(raft->m_logs[index-1].m_term == reply.m_conflict_term) {
+                    leader_conflict_index = index;
+                    break;
+                }
+            }
+
+            if(leader_conflict_index != -1) {
+                raft->m_next_index[clientPeerId] = leader_conflict_index + 1;
+            } else {
+                raft->m_next_index[clientPeerId] = reply.m_conflict_index; //这里加不加1都可，无非是多一位还是少一位，此处指follower对应index为空
+            }
+        } else {
+            if(reply.m_conflict_term == -100) {
+
+            }
+            //-------------------很关键，运行时不能注释下面这段，因为我自己调试bug强行增加bug，没有专门的测试程序-----------------
+            else raft->m_next_index[clientPeerId] = reply.m_conflict_index;
+        }
+        
+    }
+    raft->m_lock.unlock();
 }
-void Raft::logDeserialize(const std::string& input, std::vector<LogEntry>& output) {
-    LogsMessage logsMessage;
-    if (!logsMessage.ParseFromString(input)) {
-        throw std::runtime_error("Failed to parse log entries.");
+
+AppendEntriesReply Raft::replyToAppend(AppendEntriesArgs args) {
+    vector<LogEntry> recv_log = getCmdAndTerm(args.m_sendLogs);
+    AppendEntriesReply reply;
+    m_lock.lock();
+    reply.m_term = m_cur_term;
+    reply.m_success = false;
+    reply.m_conflict_index = -1;
+    reply.m_conflict_term = -1;
+
+    if(args.m_term < m_cur_term) {
+        m_lock.unlock();
+        return reply;
     }
-    for(auto log : logsMessage.entries()) {
-        output.emplace_back(log.m_term(), log.m_command(), log.m_idx());
+
+    if(args.m_term >= m_cur_term) {
+        if(args.m_term > m_cur_term){
+            m_voted_for = -1;
+        }
+        m_cur_term = args.m_term;
+        m_state = FOLLOWER;
     }
+
+    m_last_wake = getNowMs();
+
+    if(m_is_dead) {
+        reply.m_conflict_term = -100;
+        m_lock.unlock();
+        return reply;
+    }
+
+    int last_index = m_logs.size();
+    if(last_index < args.m_prevLogIndex){        
+        reply.m_conflict_index = last_index + 1;    
+        printf(" [%d]'s logs.size : %d < [%d]'s prevLogIdx : %d, ret conflict idx is %d\n", 
+            m_id, last_index, args.m_leaderId, args.m_prevLogIndex, reply.m_conflict_index);
+        m_lock.unlock();
+        return reply;
+    }
+
+    if(m_logs[args.m_prevLogIndex - 1].m_term != args.m_prevLogTerm) {
+        printf(" [%d]'s prevLogterm : %d != [%d]'s prevLogTerm : %d\n", m_id, m_logs[args.m_prevLogIndex - 1].m_term, args.m_leaderId, args.m_prevLogTerm);
+
+        reply.m_conflict_term = m_logs[args.m_prevLogIndex - 1].m_term;
+        for(int index = 1; index <= args.m_prevLogIndex; index++) {
+            if(m_logs[index - 1].m_term == reply.m_conflict_term) {
+                reply.m_conflict_index = index;
+                break;
+            }
+        }
+        m_lock.unlock();
+        return reply;
+    }
+
+    for(int i = args.m_prevLogIndex; i < last_index; ++i) {
+        m_logs.pop_back();
+    }
+
+    for(auto& log : recv_log) {
+        m_logs.push_back(log);
+    }
+
+    if(m_commit_index < args.m_leaderCommit) {
+        m_commit_index = min(args.m_leaderCommit, last_index);
+    }
+    m_lock.unlock();
+    reply.m_success = true;
+    return reply;
+}
+
+void Raft::kill() {
+    m_is_dead = true;
+    printf("raft%d is dead\n", m_id);
+}
+void Raft::activate() {
+    m_is_dead = false;
+    printf("raft%d is activate\n", m_id);
+}
+
+bool Raft::isDead() {
+    return m_is_dead;
+}
+
+pair<int, bool> Raft::getState() {
+    return {m_cur_term, m_state == LEADER};
+}
+
+vector<LogEntry> Raft::getCmdAndTerm(string text){
+    vector<LogEntry> logs;
+    int n = text.size();
+    vector<string> str;
+    string tmp = "";
+    for(int i = 0; i < n; i++){
+        if(text[i] != ';'){
+            tmp += text[i];
+        }else{
+            if(tmp.size() != 0) str.push_back(tmp);
+            tmp = "";
+        }
+    }
+    for(int i = 0; i < str.size(); i++){
+        tmp = "";
+        int j = 0;
+        for(; j < str[i].size(); j++){
+            if(str[i][j] != ','){
+                tmp += str[i][j];
+            }else break;
+        }
+        string number(str[i].begin() + j + 1, str[i].end());
+        int num = atoi(number.c_str());
+        logs.push_back(LogEntry(tmp, num));
+    }
+    return logs;
 }
